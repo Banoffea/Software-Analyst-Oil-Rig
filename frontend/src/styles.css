@@ -1,0 +1,42 @@
+body {
+  font-family: Arial, sans-serif;
+  padding: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+table th,
+table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+button {
+  padding: 6px 10px;
+  margin: 2px;
+}
+
+.login-page {
+  max-width: 320px;
+  margin: 40px auto;
+}
+
+input {
+  display: block;
+  margin: 6px 0;
+  padding: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
