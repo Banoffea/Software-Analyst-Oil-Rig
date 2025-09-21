@@ -24,7 +24,7 @@
         [nodemon] starting `node src/server.js`
         API on : 8000
         ```
-4) เปิด XAMPP start apache, mySQL
+4) เปิด XAMPP start apache, mySQL เข้าไปดูข้อมูลใน http://localhost/phpmyadmin/ ได้
 
 5) เข้า http://localhost:5173/ หาก ```Error``` หรือ ```ล็อกอินไม่เข้า``` ให้ไปแก้ ไฟล์ .env
 
