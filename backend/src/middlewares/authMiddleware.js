@@ -1,17 +1,17 @@
-// src/middlewares/authMiddleware.js
+// backend/src/middlewares/authMiddleware.js
 const jwt = require('jsonwebtoken');
+const SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
 
-const authMiddleware = (req, res, next) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ message: 'No token' });
-  const token = auth.split(' ')[1];
+module.exports = function authMiddleware(req, _res, next) {
+  const token = req.cookies?.token;     // ✅ ใช้คุกกี้ชื่อ token เสมอ
+  if (!token) { req.user = null; return next(); }
+
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: 'Invalid token' });
+    const p = jwt.verify(token, SECRET);
+    // ✅ payload รูปแบบเดียวกันทุกที่
+    req.user = { id: p.id, username: p.username, name: p.name, role: p.role };
+  } catch {
+    req.user = null;
   }
+  next();
 };
-
-module.exports = authMiddleware;

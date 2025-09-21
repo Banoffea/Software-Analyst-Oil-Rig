@@ -1,90 +1,419 @@
-import React, { useState, useEffect } from 'react';
-import { createIssue } from '../api/issues';
+// src/components/IssueModal.jsx
+import React, { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
+import { createIssue } from "../api/issues";
 
-/**
- props:
-  - open: boolean
-  - onClose: () => void
-  - onCreated: (issue) => void
-  - defaultType: 'oil'|'vessel' (optional)
-  - refOptions: [{ id, label }] (optional) - ให้เลือก ref_id
-*/
-export default function IssueModal({ open, onClose, onCreated, defaultType = 'oil', refOptions = [] }) {
-  const [issueType, setIssueType] = useState(defaultType);
-  const [refId, setRefId] = useState('');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+
+// "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
+function nowLocalForInput() {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId }) {
+  switch (type) {
+    case "shipment":
+      if (shipmentId) return `Issue on voyage #${shipmentId}`;
+      if (vesselId) return `Issue on vessel #${vesselId} (voyage)`;
+      return "Shipment issue";
+    case "vessel":
+      return vesselId ? `Vessel #${vesselId} issue` : "Vessel issue";
+    case "lot":
+      return lotId ? `Lot #${lotId} issue` : "Lot issue";
+    case "oil":
+      return rigId ? `Rig #${rigId} issue` : "Oil issue";
+    default:
+      return "Issue";
+  }
+}
+
+export default function IssueModal({
+  open,
+  onClose,
+  // defaults (use these when opening from a specific context)
+  defaultType = "oil",
+  defaultRigId = null,
+  defaultLotId = null,
+  defaultVesselId = null,
+  defaultVesselPosId = null,
+  defaultShipmentId = null,
+  // helpers
+  lockType = false,
+  defaultTitle = "",
+}) {
+  const firstFieldRef = useRef(null);
+
+  // form state
+  const [type, setType] = useState(defaultType);
+  const [rigId, setRigId] = useState(defaultRigId ?? "");
+  const [lotId, setLotId] = useState(defaultLotId ?? "");
+  const [vesselId, setVesselId] = useState(defaultVesselId ?? "");
+  const [vposId, setVposId] = useState(defaultVesselPosId ?? "");
+  const [shipmentId, setShipmentId] = useState(defaultShipmentId ?? "");
+
+  const [severity, setSeverity] = useState("low");
+  const [title, setTitle] = useState(defaultTitle || "");
+  const [titleTouched, setTitleTouched] = useState(false);
+  const [desc, setDesc] = useState("");
+
+  // occur time -> sent as anchor_time
+  const [anchorAt, setAnchorAt] = useState(nowLocalForInput());
+  const [busy, setBusy] = useState(false);
+
+  // lock when opened from context
+  const derivedLock =
+    lockType ||
+    (defaultType === "oil" && defaultRigId != null) ||
+    (defaultType === "lot" && defaultLotId != null) ||
+    (defaultType === "vessel" && defaultVesselId != null) ||
+    (defaultType === "shipment" && (defaultShipmentId != null || defaultVesselId != null));
+
+  // reset when opened
+  useEffect(() => {
+    if (!open) return;
+    setType(defaultType);
+    setRigId(defaultRigId ?? "");
+    setLotId(defaultLotId ?? "");
+    setVesselId(defaultVesselId ?? "");
+    setVposId(defaultVesselPosId ?? "");
+    setShipmentId(defaultShipmentId ?? "");
+    setSeverity("low");
+    setDesc("");
+    setAnchorAt(nowLocalForInput());
+
+    const seeded = defaultTitle || makeAutoTitle(defaultType, {
+      shipmentId: defaultShipmentId ?? "",
+      vesselId: defaultVesselId ?? "",
+      lotId: defaultLotId ?? "",
+      rigId: defaultRigId ?? "",
+    });
+    setTitle(seeded);
+    setTitleTouched(Boolean(defaultTitle));
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    setTimeout(() => firstFieldRef.current?.focus(), 0);
+    return () => {
+      document.body.style.overflow = prev;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    defaultType,
+    defaultRigId,
+    defaultLotId,
+    defaultVesselId,
+    defaultVesselPosId,
+    defaultShipmentId,
+    defaultTitle,
+  ]);
+
+  // auto title until user types
+  useEffect(() => {
+    if (!open || titleTouched) return;
+    setTitle(makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId }));
+  }, [open, titleTouched, type, shipmentId, vesselId, lotId, rigId]);
 
   useEffect(() => {
-    if (open) {
-      setIssueType(defaultType);
-      setRefId('');
-      setTitle('');
-      setDescription('');
-      setError('');
-    }
-  }, [open, defaultType]);
+    if (!open) return;
+    const onKey = (e) => e.key === "Escape" && !busy && onClose?.(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, busy, onClose]);
 
   if (!open) return null;
 
   const submit = async (e) => {
     e.preventDefault();
-    if (!title.trim()) return setError('กรุณากรอกหัวข้อ');
-    setLoading(true);
+
+    // build payload (no reading_id field here; backend resolves by anchor_time)
+    const payload = {
+      type,
+      severity,
+      title,
+      description: desc,
+      anchor_time: anchorAt ? anchorAt.replace("T", " ") + ":00" : undefined,
+    };
+
+    if (type === "oil") {
+      if (rigId) payload.rig_id = Number(rigId);
+    } else if (type === "lot") {
+      if (lotId) payload.lot_id = Number(lotId);
+    } else if (type === "vessel") {
+      if (vesselId) payload.vessel_id = Number(vesselId);
+      if (vposId) payload.vessel_position_id = Number(vposId); // optional
+    } else if (type === "shipment") {
+      if (shipmentId) payload.shipment_id = Number(shipmentId); // optional
+      if (vesselId) payload.vessel_id = Number(vesselId); // optional
+    }
+
+    setBusy(true);
     try {
-      const payload = {
-        issue_type: issueType,
-        ref_id: refId || null,
-        title,
-        description
-      };
-      const res = await createIssue(payload);
-      setLoading(false);
-      onCreated && onCreated(res);
-      onClose && onClose();
+      await createIssue(payload);
+      onClose?.(true);
     } catch (err) {
-      setLoading(false);
-      setError(err.response?.data?.message || 'ไม่สามารถสร้าง issue ได้');
+      alert(err?.response?.data?.message || "Create failed");
+    } finally {
+      setBusy(false);
     }
   };
 
-  return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <h3>แจ้งปัญหา</h3>
-        <form onSubmit={submit}>
-          <label>ประเภท</label>
-          <select value={issueType} onChange={e => setIssueType(e.target.value)}>
-            <option value="oil">Oil</option>
-            <option value="vessel">Vessel</option>
-          </select>
+  const onBackdrop = (e) => {
+    if (e.target === e.currentTarget && !busy) onClose?.(false);
+  };
 
-          <label>อ้างอิง (ถ้ามี)</label>
-          {refOptions.length > 0 ? (
-            <select value={refId} onChange={e => setRefId(e.target.value)}>
-              <option value="">-- เลือก (optional) --</option>
-              {refOptions.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-            </select>
+  return createPortal(
+    <div className="imodal-backdrop" onMouseDown={onBackdrop} role="dialog" aria-modal="true">
+      <div className="imodal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="imodal-head">
+          <h3>Report an issue</h3>
+          <button className="x" onClick={() => !busy && onClose?.(false)} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="imodal-body">
+          {!derivedLock ? (
+            <div className="grid2">
+              <label className="f">
+                <span>Type</span>
+                <select
+                  ref={firstFieldRef}
+                  className="in"
+                  value={type}
+                  onChange={(e) => {
+                    setType(e.target.value);
+                    setTitleTouched(false);
+                  }}
+                >
+                  <option value="oil">Oil (current reading)</option>
+                  <option value="lot">Lot</option>
+                  <option value="vessel">Vessel</option>
+                  <option value="shipment">Shipment</option>
+                </select>
+              </label>
+              <label className="f">
+                <span>Severity</span>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+            </div>
           ) : (
-            <input placeholder="ref id (optional)" value={refId} onChange={e => setRefId(e.target.value)} />
+            <div className="grid2">
+              <div className="f">
+                <span>Type</span>
+                <div className="chip">
+                  {defaultType === "oil"
+                    ? "Oil (current reading)"
+                    : defaultType === "shipment"
+                    ? "Shipment"
+                    : defaultType[0].toUpperCase() + defaultType.slice(1)}
+                </div>
+              </div>
+              <label className="f">
+                <span>Severity</span>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+            </div>
           )}
 
-          <label>หัวข้อ</label>
-          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="เช่น ความเร็วผิดปกติของเรือ No.11" />
+          {/* occur time (used as anchor_time) */}
+          <label className="f">
+            <span>When did it occur?</span>
+            <div className="row">
+              <input
+                type="datetime-local"
+                className="in"
+                value={anchorAt}
+                onChange={(e) => setAnchorAt(e.target.value)}
+              />
+              <button type="button" className="btn ghost" onClick={() => setAnchorAt(nowLocalForInput())}>
+                Now
+              </button>
+            </div>
+          </label>
 
-          <label>รายละเอียด</label>
-          <textarea value={description} onChange={e => setDescription(e.target.value)} rows={4} />
+          {/* context fields */}
+          {type === "oil" && (
+            derivedLock ? (
+              <div className="f">
+                <span>Rig</span>
+                <div className="chip">Rig #{rigId}</div>
+              </div>
+            ) : (
+              <label className="f">
+                <span>Rig ID</span>
+                <input
+                  className="in"
+                  value={rigId}
+                  onChange={(e) => {
+                    setRigId(e.target.value);
+                    setTitleTouched(false);
+                  }}
+                  required
+                />
+              </label>
+            )
+          )}
 
-          {error && <div className="error">{error}</div>}
+          {type === "lot" && (
+            derivedLock ? (
+              <div className="f">
+                <span>Lot</span>
+                <div className="chip">Lot #{lotId}</div>
+              </div>
+            ) : (
+              <label className="f">
+                <span>Lot ID</span>
+                <input
+                  className="in"
+                  value={lotId}
+                  onChange={(e) => {
+                    setLotId(e.target.value);
+                    setTitleTouched(false);
+                  }}
+                  required
+                />
+              </label>
+            )
+          )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button type="button" onClick={onClose}>ยกเลิก</button>
-            <button type="submit" disabled={loading}>{loading ? 'กำลังส่ง...' : 'ส่งรายงาน'}</button>
+          {type === "vessel" && (
+            derivedLock ? (
+              <>
+                <div className="f">
+                  <span>Vessel</span>
+                  <div className="chip">Vessel #{vesselId}</div>
+                </div>
+                {/* Removed Vessel Position ID (optional) field (locked case) */}
+              </>
+            ) : (
+              <div className="grid2">
+                <label className="f">
+                  <span>Vessel ID</span>
+                  <input
+                    className="in"
+                    value={vesselId}
+                    onChange={(e) => {
+                      setVesselId(e.target.value);
+                      setTitleTouched(false);
+                    }}
+                    required
+                  />
+                </label>
+                {/* Removed Vessel Position ID (optional) field (editable case) */}
+              </div>
+            )
+          )}
+
+          {type === "shipment" && (
+            <>
+              {defaultShipmentId != null ? (
+                <div className="f">
+                  <span>Shipment</span>
+                  <div className="chip">Voyage #{shipmentId}</div>
+                </div>
+              ) : (
+                <label className="f">
+                  <span>Shipment ID (optional)</span>
+                  <input
+                    className="in"
+                    value={shipmentId}
+                    onChange={(e) => {
+                      setShipmentId(e.target.value);
+                      setTitleTouched(false);
+                    }}
+                  />
+                </label>
+              )}
+              {defaultVesselId != null ? (
+                <div className="f">
+                  <span>Vessel</span>
+                  <div className="chip">Vessel #{vesselId}</div>
+                </div>
+              ) : (
+                <label className="f">
+                  <span>Vessel ID (optional)</span>
+                  <input
+                    className="in"
+                    value={vesselId}
+                    onChange={(e) => {
+                      setVesselId(e.target.value);
+                      setTitleTouched(false);
+                    }}
+                  />
+                </label>
+              )}
+              {defaultShipmentId == null && defaultVesselId == null && (
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Provide <b>Shipment ID</b> or <b>Vessel ID</b> (at least one).
+                </div>
+              )}
+            </>
+          )}
+
+          <label className="f">
+            <span>Title</span>
+            <input
+              className="in"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                setTitleTouched(true);
+              }}
+              required
+              placeholder={makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
+            />
+          </label>
+
+          <label className="f">
+            <span>Description</span>
+            <textarea className="in" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+          </label>
+
+          <div className="foot">
+            <button type="button" className="btn" onClick={() => onClose?.(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn primary" disabled={busy}>
+              {busy ? "Submitting…" : "Submit"}
+            </button>
           </div>
         </form>
       </div>
-    </div>
+
+      <style>{CSS}</style>
+    </div>,
+    document.body
   );
 }
+
+const CSS = `
+.imodal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:50}
+.imodal{width:min(620px,92vw);background:#fff;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden}
+.imodal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eef0f3}
+.imodal-head h3{margin:0;font-size:18px}
+.imodal-body{padding:14px 16px;display:grid;gap:12px}
+.x{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer}
+.f{display:flex;flex-direction:column;gap:6px}
+.in{border:1px solid #d1d5db;border-radius:10px;padding:10px 12px;width:100%}
+.row{display:flex;gap:8px;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{padding:9px 14px;border:1px solid #d1d5db;background:#fff;border-radius:999px;cursor:pointer}
+.btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+.btn.ghost{background:#f9fafb}
+.chip{display:inline-flex;align-items:center;gap:8px;background:#111827;color:#fff;border-radius:999px;padding:7px 12px}
+.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+@media (max-width:560px){ .grid2{grid-template-columns:1fr} }
+`;

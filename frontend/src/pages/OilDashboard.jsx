@@ -1,50 +1,217 @@
-import React, { useEffect, useState } from 'react';
-import { getDaily } from '../api/oil';
-import { createIssue } from '../api/issues';
-import dayjs from 'dayjs';
+// src/pages/OilDashboard.jsx
+import React, { useEffect, useMemo, useState } from 'react';
+import { listRigs } from '../api/rigs';
+import { getLatestPerRig } from '../api/readings';
+import { listLotsByRig } from '../api/lots';
+import IssueModal from '../components/IssueModal';
+import RealtimeDailyChart from '../components/RealtimeDailyChart';
+import LotDetailModal from '../components/LotDetailModal';
 
-export default function OilDashboard({ user }) {
-  const [date, setDate] = useState(dayjs().format('YYYY-MM-DD'));
-  const [items,setItems] = useState([]);
-  const [loading,setLoading] = useState(false);
+export default function OilDashboard() {
+  const [rigs, setRigs] = useState([]);
+  const [rigId, setRigId] = useState(null);
 
-  const fetch = async () => {
-    setLoading(true);
-    try {
-      const res = await getDaily(date);
-      setItems(res.items);
-    } catch (err) { console.error(err); }
-    setLoading(false);
+  // วันที่สำหรับกราฟ
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+  });
+
+  const [latest, setLatest] = useState([]);
+  const [lots, setLots] = useState([]);
+
+  // โมดัล report + context
+  const [issueOpen, setIssueOpen] = useState(false);
+  const [issueCtx, setIssueCtx] = useState({
+    type: 'oil',
+    rigId: null,
+    readingId: null,
+    lotId: null,
+  });
+
+  const [viewLot, setViewLot] = useState(null);
+
+  // โหลดรายชื่อแท่น
+  useEffect(() => {
+    (async () => {
+      const rs = await listRigs();
+      setRigs(rs);
+      if (rs.length) setRigId(rs[0].id);
+    })();
+  }, []);
+
+  // latest per rig
+  const refreshTop = async () => setLatest(await getLatestPerRig());
+  useEffect(() => {
+    refreshTop();
+    const t = setInterval(refreshTop, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  // lots ของแท่นที่เลือก
+  const loadLots = async (id) => {
+    if (!id) return setLots([]);
+    setLots(await listLotsByRig(id, { limit: 20 }));
   };
+  useEffect(() => { loadLots(rigId); }, [rigId]);
 
-  useEffect(()=>{ fetch(); }, [date]);
-
-  const reportIssue = async (component) => {
-    const title = `Anomaly: ${component.component_name}`;
-    const description = `Value ${component.value} ${component.unit} on ${component.record_date}`;
-    await createIssue({ issue_type: 'oil', ref_id: component.id, title, description });
-    alert('Issue created');
-  };
+  const latestByRig = useMemo(
+    () => Object.fromEntries(latest.map((r) => [r.rig_id, r])),
+    [latest]
+  );
+  const last = latestByRig[rigId];
 
   return (
-    <div>
-      <h3>Oil Components - {date}</h3>
-      <input type="date" value={date} onChange={e=>setDate(e.target.value)} />
-      {loading ? <div>Loading...</div> : (
-        <table>
-          <thead><tr><th>Component</th><th>Value</th><th>Unit</th><th>Action</th></tr></thead>
-          <tbody>
-            {items.map(it=>(
-              <tr key={it.id}>
-                <td>{it.component_name}</td>
-                <td>{it.value}</td>
-                <td>{it.unit}</td>
-                <td><button onClick={()=>reportIssue(it)}>Report</button></td>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Production Dashboard</h1>
+
+        {/* Report current oil issue (type=oil) */}
+        <button
+          onClick={() => {
+            setIssueCtx({
+              type: 'oil',
+              rigId,
+              readingId: last?.id || null, // id ของ reading ล่าสุด
+              lotId: null,
+            });
+            setIssueOpen(true);
+          }}
+          className="btn btn-primary"
+        >
+          Report current oil issue
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="card-head">
+          <div className="flex items-center gap-3">
+            <span className="muted">Rig</span>
+            <select
+              className="select"
+              value={rigId || ''}
+              onChange={(e) => setRigId(Number(e.target.value))}
+            >
+              {rigs.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.rig_code || `RIG-${r.id}`} — {r.name}
+                </option>
+              ))}
+            </select>
+
+            <span className="muted">Date</span>
+            <input
+              type="date"
+              className="select"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <div className="muted text-sm">
+            Last reading: {last?.recorded_at?.replace('T', ' ').slice(0, 19) || '-'}
+          </div>
+        </div>
+
+        <RealtimeDailyChart rigId={rigId} date={date} height={380} />
+
+        {last && (
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
+            <Metric k="Qty" v={last.Quantity} u="bbl" />
+            <Metric k="Temp" v={last.Temperature} u="°C" />
+            <Metric k="Pressure" v={last.Pressure} u="bar" />
+            <Metric k="Humidity" v={last.Humidity} u="%" />
+            <Metric k="H₂S" v={last.H2S} u="ppm" />
+            <Metric k="CO₂" v={last.CO2} u="%vol" />
+          </div>
+        )}
+      </div>
+
+      {/* ตาราง lots */}
+      <div className="card">
+        <div className="card-head">
+          <div className="card-title">Lots (latest)</div>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Lot date</th>
+                <th>Status</th>
+                <th>Total qty</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {lots.map((l) => (
+                <tr
+                  key={l.id}
+                  className="clickable"
+                  onClick={() => setViewLot(l)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && setViewLot(l)}
+                >
+                  <td>{l.lot_date}</td>
+                  <td>{l.status}</td>
+                  <td>{Number(l.total_qty || 0).toLocaleString()}</td>
+                  <td>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIssueCtx({
+                          type: 'lot',
+                          rigId,
+                          readingId: null,
+                          lotId: l.id,
+                        });
+                        setIssueOpen(true);
+                      }}
+                    >
+                      Report issue
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!lots.length && (
+                <tr>
+                  <td colSpan={4} className="muted">
+                    No lots
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* โมดัลสร้าง issue */}
+      <IssueModal
+        open={issueOpen}
+        onClose={() => setIssueOpen(false)}
+        defaultType={issueCtx.type}
+        defaultRigId={issueCtx.rigId}
+        defaultReadingId={issueCtx.readingId}
+        defaultLotId={issueCtx.lotId}
+      />
+
+      {/* Modal ดูรายละเอียดล็อต */}
+      <LotDetailModal lot={viewLot} rigId={rigId} onClose={() => setViewLot(null)} />
+    </div>
+  );
+}
+
+function Metric({ k, v, u }) {
+  const val = v == null ? '-' : Number(v).toLocaleString();
+  return (
+    <div className="metric">
+      <div className="metric-k">{k}</div>
+      <div className="metric-v">
+        {val} {val !== '-' ? u : ''}
+      </div>
     </div>
   );
 }

@@ -1,11 +1,11 @@
 // src/routes/issues.js
-const express = require('express');
-const router = express.Router();
-const auth = require('../middlewares/authMiddleware');
-const issueController = require('../controllers/issueController');
+const router = require('express').Router();
+const auth   = require('../middlewares/authMiddleware');
+const ctrl   = require('../controllers/issueController');
 
-router.get('/', auth, issueController.list);
-router.post('/', auth, issueController.create);
-router.put('/:id/status', auth, issueController.updateStatus);
+router.get('/',     auth, ctrl.list);
+router.get('/:id',  auth, ctrl.getOne);
+router.post('/',    auth, ctrl.create);
+router.patch('/:id',auth, ctrl.update);
 
 module.exports = router;
