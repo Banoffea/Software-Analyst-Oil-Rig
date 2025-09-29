@@ -2,13 +2,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { listIssues, updateIssue } from '../api/issues';
 import IssueModal from '../components/IssueModal';
-import { useAuth } from '../utils/auth.jsx'; // ⬅️ เพิ่ม
+import { useAuth } from '../utils/auth.jsx';
 
 const POLL_MS = 30000;
 
-// หมายเหตุ: ถ้าระบบคุณเปลี่ยนชุดสถานะแล้ว ให้ปรับรายการนี้ตามจริงได้เลย
-// ตัวอย่างนี้คงค่าเดิมไว้ แต่รองรับ 'approved' ด้วย (UI จะ disable ให้)
-const STATUSES = ['open', 'in_progress', 'resolved', 'closed', 'approved']; // ⬅️ เติม 'approved'
+// dropdown (row) shows ONLY these three
+const BASIC_STATUSES = ['open', 'in_progress', 'waiting_approval'];
+
+// used for badges/filters (unchanged behavior)
+const ALL_STATUSES = ['open','in_progress','waiting_approval','need_rework','approved'];
 
 function fmt(ts) {
   if (!ts) return '-';
@@ -16,46 +18,23 @@ function fmt(ts) {
 }
 
 function Dot({ color }) {
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: color,
-        marginRight: 6,
-        verticalAlign: 'baseline',
-      }}
-    />
-  );
+  return <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:color,marginRight:6,verticalAlign:'baseline'}} />;
 }
 
 function SeverityBadge({ v }) {
   const map = { low:'#7c3aed', medium:'#2563eb', high:'#dc2626', critical:'#b91c1c' };
-  return (
-    <span className="muted" style={{display:'inline-flex',alignItems:'center'}}>
-      <Dot color={map[v] || '#64748b'} />{v || '-'}
-    </span>
-  );
+  return <span className="muted" style={{display:'inline-flex',alignItems:'center'}}><Dot color={map[v] || '#64748b'} />{v || '-'}</span>;
 }
 
 function StatusBadge({ v }) {
-  // รองรับสถานะเดิม + เพิ่ม waiting_approval / need_rework / approved
   const map = {
-    open:'#10b981',
+    open:'#3b82f6',
     in_progress:'#f59e0b',
     waiting_approval:'#a855f7',
     need_rework:'#ef4444',
-    resolved:'#3b82f6',
-    approved:'#3b82f6',
-    closed:'#6b7280'
+    approved:'#10b981',
   };
-  return (
-    <span className="muted" style={{display:'inline-flex',alignItems:'center'}}>
-      <Dot color={map[v] || '#64748b'} />{(v || '-').replace('_',' ')}
-    </span>
-  );
+  return <span className="muted" style={{display:'inline-flex',alignItems:'center'}}><Dot color={map[v] || '#64748b'} />{(v || '-').replace('_',' ')}</span>;
 }
 
 /** Context formatter — แสดง reading/pos เสมอ (ถ้าไม่มีจะแสดง '-') */
@@ -84,15 +63,27 @@ function contextText(row) {
 }
 
 export default function IssuesList() {
-  const { me } = useAuth();                    // ⬅️ เอา role ของผู้ใช้มาใช้เช็คสิทธิ์
-  const canApprove = me?.role === 'manager' || me?.role === 'admin';   // ⬅️ อนุญาต approve เฉพาะ manager
+  const { me } = useAuth();
+  const role = me?.role;
 
-  const [typeTab, setTypeTab] = useState('all');      // all | oil | lot | vessel | shipment
-  const [status, setStatus] = useState('all');        // all | <statuses>
+  // who can change the three basic statuses via dropdown?
+  const canChangeBasicStatus = (row) => {
+    if (!role) return false;
+    if (role === 'admin' || role === 'manager') return true; // full control
+    if ((row.type === 'oil' || row.type === 'lot') && role === 'production') return true;
+    if ((row.type === 'vessel' || row.type === 'shipment') && (role === 'fleet' || role === 'captain')) return true;
+    return false;
+  };
+
+  // who can approve / request rework (special buttons in the popup)?
+  const canModerate = role === 'admin' || role === 'manager';
+
+  const [typeTab, setTypeTab] = useState('all');
+  const [status, setStatus] = useState('all');
   const [q, setQ] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [allRows, setAllRows] = useState([]);         // เก็บทั้งหมด
+  const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [reportOpen, setReportOpen] = useState(false);
@@ -104,7 +95,6 @@ export default function IssuesList() {
     if (q) params.q = q;
     if (from) params.from = from.replace('T',' ') + ':00';
     if (to)   params.to   = to.replace('T',' ') + ':00';
-
     try {
       const data = await listIssues(params);
       setAllRows(Array.isArray(data) ? data : []);
@@ -120,7 +110,7 @@ export default function IssuesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, from, to]);
 
-  // นับจำนวนตาม type
+  // counters
   const counts = useMemo(() => {
     const c = { all: allRows.length, oil: 0, lot: 0, vessel: 0, shipment: 0 };
     for (const r of allRows) {
@@ -132,7 +122,7 @@ export default function IssuesList() {
     return c;
   }, [allRows]);
 
-  // กรองสำหรับแสดง
+  // visible rows
   const visible = useMemo(() => {
     let rows = allRows;
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
@@ -140,28 +130,20 @@ export default function IssuesList() {
     return rows;
   }, [allRows, typeTab, status]);
 
-  // เปลี่ยนสถานะ
+  // change status (basic three from dropdown)
   const changeStatus = async (row, newStatus) => {
-    // 1) ห้ามใครแก้ออกมาจาก approved (ล็อกตาย)
-    if (row.status === 'approved' && newStatus !== 'approved') {
-      alert('This issue is already approved and cannot be changed.');
-      return;
-    }
-    // 2) เฉพาะ manager เท่านั้นที่ตั้งเป็น approved ได้
-    if (newStatus === 'approved' && !canApprove) {
-      alert('Only managers can set status to "approved".');
-      return;
-    }
-
+    if (row.status === 'approved') return;          // locked
+    if (!canChangeBasicStatus(row)) return;         // not allowed
+    if (!BASIC_STATUSES.includes(newStatus)) return; // safety
     if (row.status === newStatus) return;
 
     const prev = row.status;
-    setAllRows(rs => rs.map(it => it.id === row.id ? ({ ...it, status: newStatus, __saving: true }) : it));
+    setAllRows(rs => rs.map(it => it.id === row.id ? { ...it, status: newStatus, __saving: true } : it));
     try {
       await updateIssue(row.id, { status: newStatus });
-      setAllRows(rs => rs.map(it => it.id === row.id ? ({ ...it, __saving: false }) : it));
+      setAllRows(rs => rs.map(it => it.id === row.id ? { ...it, __saving: false } : it));
     } catch (e) {
-      setAllRows(rs => rs.map(it => it.id === row.id ? ({ ...it, status: prev, __saving: false }) : it));
+      setAllRows(rs => rs.map(it => it.id === row.id ? { ...it, status: prev, __saving: false } : it));
       alert('Update status failed');
     }
   };
@@ -202,11 +184,9 @@ export default function IssuesList() {
             />
             <select className="select" value={status} onChange={e=>setStatus(e.target.value)}>
               <option value="all">All status</option>
-              <option value="open">Open</option>
-              <option value="in_progress">In progress</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
-              <option value="approved">Approved</option> {/* เผื่อหลังบ้านใช้สถานะนี้ */}
+              {ALL_STATUSES.map(s => (
+                <option key={s} value={s}>{s.replace('_',' ')}</option>
+              ))}
             </select>
             <input type="datetime-local" className="input" value={from} onChange={e=>setFrom(e.target.value)} />
             <span className="muted">to</span>
@@ -226,7 +206,7 @@ export default function IssuesList() {
                 <th style={{width:140}}>Status</th>
                 <th style={{width:170}}>Occurred</th>
                 <th style={{width:170}}>Created</th>
-                <th style={{width:170}}>Actions</th>
+                <th style={{width:190}}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -252,29 +232,38 @@ export default function IssuesList() {
 
                   {/* prevent opening modal when using the dropdown */}
                   <td onClick={(e)=>e.stopPropagation()}>
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    {r.status === 'approved' ? (
+                      // ✅ ถ้า approved ให้แสดงป้ายสีเขียวแทน dropdown
+                      <span
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 5,
+                          color: '#10b981',
+                          fontSize: 14
+                          
+                        }}
+                      >
+                        approved
+                      </span>
+                    ) : (
+                      // ปกติยังเป็น dropdown สถานะพื้นฐาน 3 ค่า
                       <select
                         className="select"
                         style={{minWidth:160}}
                         value={r.status}
                         onChange={(e)=>changeStatus(r, e.target.value)}
-                        // ล็อกไม่ให้เปลี่ยนสถานะอีกเมื่อ approved แล้ว (ใครก็แก้ไม่ได้)
-                        disabled={r.__saving || r.status === 'approved'}
+                        disabled={r.__saving || !canChangeBasicStatus(r)}
                       >
-                        {STATUSES.map(s => (
-                          <option
-                            key={s}
-                            value={s}
-                            // ถ้าไม่ใช่ manager ให้กด approved ไม่ได้ (แสดงให้เห็นแต่ disabled)
-                            disabled={s === 'approved' && !canApprove}
-                          >
-                            {s.replace('_',' ')}
-                          </option>
+                        {BASIC_STATUSES.map(s => (
+                          <option key={s} value={s}>{s.replace('_',' ')}</option>
                         ))}
                       </select>
-                      {r.__saving && <span className="muted text-xs">Saving…</span>}
-                    </div>
-                  </td>
+                    )}
+
+                    {r.__saving && <span className="muted text-xs">Saving…</span>}
+                  </div>
+                </td>
                 </tr>
               ))}
             </tbody>
@@ -282,13 +271,37 @@ export default function IssuesList() {
         </div>
       </div>
 
-      {viewRow && <IssueDetailModal row={viewRow} onClose={() => setViewRow(null)} />}
+      {viewRow && (
+        <IssueDetailModal
+          row={viewRow}
+          canModerate={canModerate}
+          onStatusChange={(id, newStatus) => {
+            setAllRows(rs => rs.map(x => x.id === id ? { ...x, status: newStatus } : x));
+          }}
+          onClose={() => setViewRow(null)}
+        />
+      )}
       <IssueModal open={reportOpen} onClose={()=>setReportOpen(false)} />
     </div>
   );
 }
 
-function IssueDetailModal({ row, onClose }) {
+function IssueDetailModal({ row, onClose, canModerate, onStatusChange }) {
+  const [busy, setBusy] = useState(false);
+
+  const setStatus = async (newStatus) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await updateIssue(row.id, { status: newStatus });
+      onStatusChange?.(row.id, newStatus);
+    } catch (e) {
+      alert('Update status failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="modal-backdrop" onMouseDown={(e)=>{ if (e.target===e.currentTarget) onClose(); }}>
       <div className="modal" onMouseDown={e=>e.stopPropagation()}>
@@ -317,8 +330,31 @@ function IssueDetailModal({ row, onClose }) {
           </div>
         </div>
 
-        <div className="flex justify-end mt-4">
-          <button className="btn btn-primary" onClick={onClose}>Close</button>
+        {/* Footer: Close on left, actions on right */}
+        <div className="flex justify-between mt-4">
+          <button className="btn" onClick={onClose}>Close</button>
+
+          {canModerate && row.status !== 'approved' && (
+            <div className="flex gap-2">
+              <button
+                className="btn"
+                onClick={() => setStatus('need_rework')}
+                disabled={busy}
+                title="Request changes before approval"
+                style={{ background:'#ef4444', borderColor:'#ef4444', color:'#fff' }} // red
+              >
+                Request rework
+              </button>
+              <button
+                className="btn"
+                onClick={() => setStatus('approved')}
+                disabled={busy}
+                style={{ background:'#10b981', borderColor:'#10b981', color:'#fff' }} // green
+              >
+                Approve
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

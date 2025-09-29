@@ -3,7 +3,6 @@ import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createIssue } from "../api/issues";
 
-
 // "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
 function nowLocalForInput() {
   const d = new Date();
@@ -32,18 +31,17 @@ function makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId }) {
 export default function IssueModal({
   open,
   onClose,
-  // defaults (use these when opening from a specific context)
   defaultType = "oil",
   defaultRigId = null,
   defaultLotId = null,
   defaultVesselId = null,
   defaultVesselPosId = null,
   defaultShipmentId = null,
-  // helpers
   lockType = false,
   defaultTitle = "",
 }) {
   const firstFieldRef = useRef(null);
+  const descRef = useRef(null);
 
   // form state
   const [type, setType] = useState(defaultType);
@@ -57,6 +55,7 @@ export default function IssueModal({
   const [title, setTitle] = useState(defaultTitle || "");
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
+  const [triedSubmit, setTriedSubmit] = useState(false); // <-- สำหรับโชว์ error
 
   // occur time -> sent as anchor_time
   const [anchorAt, setAnchorAt] = useState(nowLocalForInput());
@@ -81,6 +80,7 @@ export default function IssueModal({
     setShipmentId(defaultShipmentId ?? "");
     setSeverity("low");
     setDesc("");
+    setTriedSubmit(false);
     setAnchorAt(nowLocalForInput());
 
     const seeded = defaultTitle || makeAutoTitle(defaultType, {
@@ -125,15 +125,27 @@ export default function IssueModal({
 
   if (!open) return null;
 
+  const descOk = (desc || "").trim().length > 0;
+  const showDescError = triedSubmit && !descOk;
+
   const submit = async (e) => {
     e.preventDefault();
+    setTriedSubmit(true);
 
-    // build payload (no reading_id field here; backend resolves by anchor_time)
+    const descTrimmed = (desc || "").trim();
+    if (!descTrimmed) {
+      // แสดงข้อความ + focus ช่อง Description
+      descRef.current?.focus();
+      alert("Please enter a description."); // แจ้งเตือนด้วย popup
+      return;
+    }
+
+    // build payload
     const payload = {
       type,
       severity,
       title,
-      description: desc,
+      description: descTrimmed,
       anchor_time: anchorAt ? anchorAt.replace("T", " ") + ":00" : undefined,
     };
 
@@ -244,9 +256,9 @@ export default function IssueModal({
             </div>
           </label>
 
-          {/* context fields */}
-          {type === "oil" && (
-            derivedLock ? (
+          {/* context fields ... (เหมือนเดิม) */}
+          {type === "oil" &&
+            (derivedLock ? (
               <div className="f">
                 <span>Rig</span>
                 <div className="chip">Rig #{rigId}</div>
@@ -264,11 +276,10 @@ export default function IssueModal({
                   required
                 />
               </label>
-            )
-          )}
+            ))}
 
-          {type === "lot" && (
-            derivedLock ? (
+          {type === "lot" &&
+            (derivedLock ? (
               <div className="f">
                 <span>Lot</span>
                 <div className="chip">Lot #{lotId}</div>
@@ -286,17 +297,15 @@ export default function IssueModal({
                   required
                 />
               </label>
-            )
-          )}
+            ))}
 
-          {type === "vessel" && (
-            derivedLock ? (
+          {type === "vessel" &&
+            (derivedLock ? (
               <>
                 <div className="f">
                   <span>Vessel</span>
                   <div className="chip">Vessel #{vesselId}</div>
                 </div>
-                {/* Removed Vessel Position ID (optional) field (locked case) */}
               </>
             ) : (
               <div className="grid2">
@@ -312,10 +321,8 @@ export default function IssueModal({
                     required
                   />
                 </label>
-                {/* Removed Vessel Position ID (optional) field (editable case) */}
               </div>
-            )
-          )}
+            ))}
 
           {type === "shipment" && (
             <>
@@ -377,9 +384,20 @@ export default function IssueModal({
             />
           </label>
 
+          {/* Description + error message */}
           <label className="f">
-            <span>Description</span>
-            <textarea className="in" rows={4} value={desc} onChange={(e) => setDesc(e.target.value)} />
+            <span>Description <span className="muted">(required)</span></span>
+            <textarea
+              ref={descRef}
+              className={`in ${showDescError ? 'error' : ''}`}
+              rows={4}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Describe the problem, steps, impact, etc."
+            />
+            {showDescError && (
+              <div className="err">กรุณากรอกรายละเอียด (Description) ก่อนกด Submit</div>
+            )}
           </label>
 
           <div className="foot">
@@ -408,6 +426,8 @@ const CSS = `
 .x{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer}
 .f{display:flex;flex-direction:column;gap:6px}
 .in{border:1px solid #d1d5db;border-radius:10px;padding:10px 12px;width:100%}
+.in.error{border-color:#ef4444}
+.err{color:#dc2626;font-size:12px;margin-top:4px}
 .row{display:flex;gap:8px;align-items:center}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .btn{padding:9px 14px;border:1px solid #d1d5db;background:#fff;border-radius:999px;cursor:pointer}

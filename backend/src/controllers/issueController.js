@@ -2,6 +2,7 @@
 const db = require('../db');
 
 const VALID_STATUSES = [
+  'open',
   'in_progress',
   'waiting_approval',
   'need_rework',
@@ -181,92 +182,102 @@ async function resolveContext(payload) {
     anchor_time: null,
   };
 
-  // OIL -> ยึด reading ล่าสุด (หรือ reading ที่ส่งมา)
+  // ใช้เวลา anchor ที่ผู้ใช้ส่งมา (หรือเวลาปัจจุบันถ้าไม่ส่งมา)
+  const ts = normalizeObservedAt(payload.anchor_time) || mysqlDateTimeBKK();
+
+  // ----- OIL : หา product_readings ที่ "ใกล้" เวลา ts ของแท่นนั้น -----
   if (out.type === 'oil') {
     if (!out.rig_id) throw new Error('rig_id required for type=oil');
 
+    // ถ้าบังคับส่ง reading_id มา → ตรวจสอบแล้วใช้ตัวนั้น
     if (out.reading_id) {
-      const [r] = await db.query(
+      const [[r]] = await db.query(
         'SELECT rig_id, lot_id, recorded_at FROM product_readings WHERE id=? AND rig_id=?',
         [out.reading_id, out.rig_id]
       );
-      if (!r.length) throw new Error('reading_id not found for this rig');
-      out.lot_id = r[0].lot_id ?? out.lot_id;
-      out.anchor_time = r[0].recorded_at;
+      if (!r) throw new Error('reading_id not found for this rig');
+      out.lot_id = r.lot_id ?? out.lot_id;
+      out.anchor_time = r.recorded_at;
+      return out;
+    }
+
+    // ปกติ: เลือกตัวที่ใกล้ ts ที่สุด (ภายใน WINDOW_SEC)
+    const nearest = await findNearestReadingAt(out.rig_id, ts);
+    if (nearest) {
+      out.reading_id = nearest.id;
+      out.lot_id = nearest.lot_id ?? out.lot_id;
+      // ให้ anchor_time สัมพันธ์กับ reading จริง
+      out.anchor_time = nearest.recorded_at;
     } else {
-      const [r] = await db.query(
-        'SELECT id, lot_id, recorded_at FROM product_readings WHERE rig_id=? ORDER BY recorded_at DESC LIMIT 1',
-        [out.rig_id]
-      );
-      if (!r.length) throw new Error('no reading found for this rig');
-      out.reading_id = r[0].id;
-      out.lot_id = r[0].lot_id ?? out.lot_id;
-      out.anchor_time = r[0].recorded_at;
+      // ถ้าไม่พบเลย ก็ยึดเวลาที่ผู้ใช้เลือกไว้
+      out.anchor_time = ts;
     }
     return out;
   }
 
-  // LOT -> ดึง lot + reading ล่าสุดใน lot นั้น ถ้าไม่มีใช้ lot_date หรือ NOW
+  // ----- LOT : เหมือนเดิม -----
   if (out.type === 'lot') {
     if (!out.lot_id) throw new Error('lot_id required for type=lot');
     const [[lot]] = await db.query('SELECT rig_id, lot_date FROM product_lots WHERE id=?', [out.lot_id]);
     if (!lot) throw new Error('lot not found');
     out.rig_id = lot.rig_id ?? out.rig_id;
 
-    const [r] = await db.query(
+    const [[r]] = await db.query(
       'SELECT MAX(recorded_at) AS last_ts FROM product_readings WHERE lot_id=?',
       [out.lot_id]
     );
-    out.anchor_time = r[0]?.last_ts || lot.lot_date || mysqlDateTimeBKK();
+    out.anchor_time = r?.last_ts || lot.lot_date || ts;
     return out;
   }
 
-  // VESSEL -> ยึดตำแหน่งล่าสุด (หรือ id ที่ส่งมา)
+  // ----- VESSEL : หา position ใกล้ ts ที่สุด -----
   if (out.type === 'vessel') {
     if (!out.vessel_id) throw new Error('vessel_id required for type=vessel');
 
     if (out.vessel_position_id) {
-      const [p] = await db.query(
+      const [[p]] = await db.query(
         'SELECT recorded_at FROM vessel_positions WHERE id=? AND vessel_id=?',
         [out.vessel_position_id, out.vessel_id]
       );
-      if (!p.length) throw new Error('vessel_position_id not found for this vessel');
-      out.anchor_time = p[0].recorded_at;
+      if (!p) throw new Error('vessel_position_id not found for this vessel');
+      out.anchor_time = p.recorded_at;
+      return out;
+    }
+
+    const pos = await findNearestVesselPosAt(out.vessel_id, ts);
+    if (pos) {
+      out.vessel_position_id = pos.id;
+      out.anchor_time = pos.recorded_at;
     } else {
-      const [p] = await db.query(
-        'SELECT id, recorded_at FROM vessel_positions WHERE vessel_id=? ORDER BY recorded_at DESC LIMIT 1',
-        [out.vessel_id]
-      );
-      if (!p.length) throw new Error('no vessel position found for this vessel');
-      out.vessel_position_id = p[0].id;
-      out.anchor_time = p[0].recorded_at;
+      out.anchor_time = ts;
     }
     return out;
   }
 
-  // SHIPMENT -> ถ้าระบุ shipment_id จะ anchor ที่ arrive_at/ depart_at; ไม่งั้น NOW()
+  // ----- SHIPMENT : เดิม -----
   if (out.type === 'shipment') {
     if (out.shipment_id) {
-      const [s] = await db.query(
+      const [[s]] = await db.query(
         'SELECT vessel_id, COALESCE(arrive_at, depart_at, created_at) AS ts FROM shipments WHERE id=?',
         [out.shipment_id]
       );
-      if (s.length) {
-        out.vessel_id = out.vessel_id ?? s[0].vessel_id ?? null;
-        out.anchor_time = s[0].ts || mysqlDateTimeBKK();
+      if (s) {
+        out.vessel_id = out.vessel_id ?? s.vessel_id ?? null;
+        out.anchor_time = s.ts || ts;
       } else {
-        out.anchor_time = mysqlDateTimeBKK();
+        out.anchor_time = ts;
       }
     } else {
-      out.anchor_time = mysqlDateTimeBKK();
+      out.anchor_time = ts;
     }
     return out;
   }
 
   // fallback
-  if (!out.anchor_time) out.anchor_time = mysqlDateTimeBKK();
+  out.anchor_time = ts;
   return out;
 }
+
 
 // =============== Create ===============
 exports.create = async (req, res) => {
@@ -274,6 +285,9 @@ exports.create = async (req, res) => {
     const { type, severity = 'low', title, description = '' } = req.body;
     if (!['oil','lot','vessel','shipment'].includes(type)) {
       return res.status(400).json({ message: 'invalid type' });
+    }
+    if (!description || !String(description).trim()) {
+      return res.status(400).json({ message: 'description required' });
     }
     if (!title) return res.status(400).json({ message: 'title required' });
 
@@ -283,14 +297,15 @@ exports.create = async (req, res) => {
     const [r] = await db.query(
       `INSERT INTO issues
         (type, rig_id, reading_id, lot_id, vessel_id, vessel_position_id, shipment_id,
-         severity, status, title, description, reported_by, anchor_time,
-         created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, NOW(), NOW())`,
+        severity, title, description, reported_by, anchor_time,
+        created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         ctx.type, ctx.rig_id, ctx.reading_id, ctx.lot_id, ctx.vessel_id, ctx.vessel_position_id, ctx.shipment_id,
         severity, title, description, reported_by, ctx.anchor_time
       ]
     );
+
 
     const [row] = await db.query('SELECT * FROM issues WHERE id=?', [r.insertId]);
     res.status(201).json(row[0]);
@@ -303,36 +318,34 @@ exports.create = async (req, res) => {
 // =============== Update ===============
 exports.update = async (req, res) => {
   const id = Number(req.params.id);
-  const { status, ...rest } = req.body || {};
+  const { status } = req.body || {};
   if (!id) return res.status(400).json({ message: 'Invalid id' });
 
   try {
-    const [[curr]] = await db.query(
-      'SELECT status FROM issues WHERE id=? LIMIT 1',
-      [id]
-    );
+    const [[curr]] = await db.query('SELECT status FROM issues WHERE id=? LIMIT 1', [id]);
     if (!curr) return res.status(404).json({ message: 'Issue not found' });
 
-    // ถ้า approved แล้ว ห้ามเปลี่ยนสถานะอีก
+    // ห้ามแก้ถ้าอนุมัติไปแล้ว
     if (curr.status === 'approved' && status && status !== curr.status) {
       return res.status(409).json({ message: 'Approved issues are immutable' });
     }
 
-    // ถ้ามีการส่ง status ใหม่มา ให้ตรวจว่าอยู่ในชุดที่ยอมรับ
+    // ตรวจค่าถูกชุด
     if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    // อนุญาตให้อัพเดทเฉพาะ field ที่รองรับ (ในที่นี้เน้น status)
-    const newStatus = status ?? curr.status;
-    await db.query(
-      'UPDATE issues SET status=?, updated_at=NOW() WHERE id=?',
-      [newStatus, id]
-    );
+    // ถ้าจะ set เป็น approved ต้องเป็น manager หรือ admin เท่านั้น
+    if (status === 'approved' && !['manager','admin'].includes(req.user?.role)) {
+      return res.status(403).json({ message: 'Only manager or admin can approve.' });
+    }
 
+    const newStatus = status ?? curr.status;
+    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?', [newStatus, id]);
     return res.json({ ok: true, id, status: newStatus });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: 'DB error' });
   }
 };
+
