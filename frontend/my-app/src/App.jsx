@@ -10,7 +10,7 @@ export default function App() {
     <div>
       <header className="topbar">
         <div className="container bar">
-          <NavLink to="/" className="brand">Oil Ops</NavLink>
+          <NavLink to="/" className="brand">OffshoreManagingDashboards</NavLink>
           <nav className="nav">
             <NavLink to="/dashboard" className={({isActive}) => isActive ? "active" : ""}>Dashboard</NavLink>
             <NavLink to="/vessels"   className={({isActive}) => isActive ? "active" : ""}>Vessels</NavLink>

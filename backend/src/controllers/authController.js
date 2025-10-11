@@ -53,7 +53,7 @@ exports.login = async (req, res) => {
     `;
     const [rows] = await db.query(sql, params);
     const u = rows[0];
-    if (!u) return res.status(401).json({ message: 'Unauthenticated' });
+    if (!u) return res.status(401).json({ message: 'Login Failed' });
 
     // ✅ payload เดียวกัน
     const token = jwt.sign(
@@ -66,7 +66,7 @@ exports.login = async (req, res) => {
     res.json({ user: { id: u.id, username: u.username, display_name: u.display_name, role: u.role } });
   } catch (e) {
     console.error('[auth:login]', e);
-    res.status(500).json({ message: 'login failed' });
+    res.status(500).json({ message: 'Login failed' });
   }
 };
 

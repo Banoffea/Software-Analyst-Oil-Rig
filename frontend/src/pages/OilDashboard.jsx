@@ -117,16 +117,7 @@ export default function OilDashboard() {
 
         <RealtimeDailyChart rigId={rigId} date={date} height={380} />
 
-        {last && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
-            <Metric k="Qty" v={last.Quantity} u="bbl" />
-            <Metric k="Temp" v={last.Temperature} u="°C" />
-            <Metric k="Pressure" v={last.Pressure} u="bar" />
-            <Metric k="Humidity" v={last.Humidity} u="%" />
-            <Metric k="H₂S" v={last.H2S} u="ppm" />
-            <Metric k="CO₂" v={last.CO2} u="%vol" />
-          </div>
-        )}
+        
       </div>
 
       {/* ตาราง lots */}
