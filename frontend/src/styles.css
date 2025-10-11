@@ -1,10 +1,11 @@
 :root {
-  --bg: #f7f8fa;
-  --card: #ffffff;
-  --line: #e7e9ee;
-  --text: #111827;
-  --muted: #6b7280;
-  --brand: #0f62fe;   /* IBM-ish blue */
+  --bg: #111A22;
+  --card: #18232F;
+  --line: #233748;
+  --field: #233748;
+  --text: #FFFFFF;
+  --muted: #92B0C9;
+  --brand: #138AEC;
   --brand-600: #1e5fe6;
 }
 
@@ -14,32 +15,33 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 
 /* Header */
 .site-header {
-  position: sticky; top: 0; z-index: 20;
-  background: var(--card); border-bottom: 1px solid var(--line);
+  position: sticky; width: 100%; top: 0; z-index: 20;
+  background: var(--bg); border-bottom: 1px solid var(--line);
 }
 .site-header .container {
-  max-width: 1100px; margin: 0 auto;
+  max-width: none; margin: 0 auto;
   display: flex; align-items: center; gap: 16px;
-  padding: 12px 16px;
+  padding: 12px 35px;
 }
 .brand { font-weight: 700; letter-spacing: .2px; }
 .nav { display: flex; gap: 8px; margin-left: 8px; }
 .nav-link { padding: 8px 10px; border-radius: 10px; color: var(--text); text-decoration: none; }
-.nav-link.active, .nav-link:hover { background: #eef2ff; color: var(--brand); }
+.nav-link.active, .nav-link:hover { background: #233748; color: var(--brand); }
+.ml-auto { margin-left: auto; }
 
 /* Buttons */
 .btn { border: 1px solid var(--line); background: var(--card); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
-.btn:hover { background: #f3f4f6; }
-.btn-primary { border: none; background: var(--brand); color: white; }
+.btn:hover { background: var(--field); }
+.btn-primary { border: none; background: var(--brand); color: var(--text); }
 .btn-primary:hover { background: var(--brand-600); }
-.btn-outline { background: var(--card); }
-.btn-ghost { background: transparent; border: 1px solid var(--line); }
+.btn-outline { background: transparent; color: var(--muted); border: none; }
+.btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 
 /* Page */
 .page-title { font-size: 24px; font-weight: 700; margin: 0; }
 
 /* Card */
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 30px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .card-title { font-size: 16px; font-weight: 600; }
 
@@ -47,15 +49,77 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 .table-wrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th, .table td { padding: 10px 12px; border-top: 1px solid var(--line); text-align: left; }
-.table thead th { background: #f8fafc; border-top: none; }
+.table thead th { background: transparent; border-top: none; }
 
-/* inputs */
-.select, .input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+/* --- Input with icon-as-placeholder --- */
+.input-icon {
+  position: relative;
+}
+
+.input-icon .icon-left {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--muted);   /* โทนเดียวกับ placeholder */
+  opacity: .7;
+  pointer-events: none;  /* ไม่บังการคลิก */
+  transition: opacity .15s ease;
+}
+
+/* เผื่อบางที่ยังไม่มี pl-40: เว้นให้ตัวหนังสือไม่ทับไอคอน */
+.pl-40 { padding-left: 40px !important; }
+
+/* โฟกัสแล้วจางลงเล็กน้อย */
+.input-icon:has(input:focus) .icon-left {
+  opacity: .45;
+}
+
+.input::placeholder {
+  color: #9ba3af;               /* สี placeholder */
+  opacity: .9;
+}
 
 /* metric */
-.metric { border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: #fafafa; }
-.metric-k { font-size: 12px; color: var(--muted); }
-.metric-v { font-weight: 600; }
+.metric {
+  display: inline-flex;
+  align-items: baseline;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  position: relative;
+}
+
+.metrics-row {
+  display: flex;
+  justify-content: center;   /* จัดกึ่งกลางแนวนอน */
+  align-items: center;
+  flex-wrap: wrap;           /* ถ้าเกินบรรทัดให้ตัด */
+  gap: 16px;                 /* ระยะห่างระหว่าง metric */
+}
+
+.metric::after {
+  content: "|";              /* ตัวคั่น */
+  margin-left: 16px;
+  color: var(--muted);
+}
+
+.metric:last-child::after {
+  content: "";               /* ตัวสุดท้ายไม่ต้องมี | */
+}
+
+.metric-k {
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 4px;        /* เว้นระยะ label กับค่า */
+}
+.metric-v {
+  font-weight: 600;
+}
 
 /* helpers */
 .muted { color: var(--muted); }
@@ -76,7 +140,7 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 .modal {
   width: 100%;
   max-width: 720px;
-  background: #fff;
+  background: #192833;
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0,0,0,.25);
   padding: 20px;
@@ -91,18 +155,110 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 /* ช่องฟอร์มพื้นฐาน (ถ้ายังไม่มี) */
 .field > span { display:block; font-size:12px; color:#6b7280; margin-bottom:6px; }
 .input, .select, .textarea {
+  background-color: var( --field);
+  color: var( --text);
   width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 8px 10px;
+  height: 52px;
+  border: none;
+  border-radius: 5px;
+  font-size: 16px;
+  padding: 0px 16px;
   outline: none;
 }
-.input:focus, .select:focus, .textarea:focus { border-color:#94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,.2); }
+.input:focus, .select:focus, .textarea:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.25); }
 
 .table tr.clickable {
   cursor: pointer;
   transition: background-color .15s ease;
 }
-.table tr.clickable:hover { background-color: #f3f4f6; }  /* light gray */
-.table tr.clickable:active { background-color: #e5e7eb; } /* pressed */
-.table tr.clickable:focus-within { background-color: #eef2ff; } /* keyboard focus */
+.table tr.clickable:hover { background-color: var(--field); }  /* light gray */
+.table tr.clickable:active { background-color: var(--muted); } /* pressed */
+.table tr.clickable:focus-within { background-color: var(--muted); } /* keyboard focus */
+
+
+/** Login Page **/
+
+.login-shell{
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.login-main{
+  min-height: 0;
+  display: grid;
+  place-items: center;     /* แนวนอน+แนวตั้ง */
+  padding: 35px;
+  overflow: hidden;
+}
+
+/* ขนาดการ์ด + จัดทุกอย่างด้านในให้อยู่กึ่งกลาง */
+.login-card{
+  width: 450px;
+  height: 410px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;     /* center แนวนอน */
+  gap: 28px;
+  text-align: center;      /* ให้หัวข้อ/คำอธิบายกึ่งกลาง */
+  box-sizing: border-box;  /* เผื่อ padding */
+}
+
+.login-head{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;                          /* ลดเฉพาะระหว่าง title กับ sub */
+}
+
+/* ให้ฟอร์มและช่องกรอกอยู่กลาง และกว้างเต็มการ์ด */
+.login-form{
+  width: 100%;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;     /* ปุ่ม/ส่วนประกอบในฟอร์มอยู่กลาง */
+  gap: 20px;
+}
+.field{ width: 100%; }
+.input-icon{ width: 100%; }  /* ครอบ input+icon ให้กินเต็ม */
+.w-full{ 
+  width: 100%; 
+  min-height: 52px;
+  font-size: 16px;
+}      /* เผื่อคลาสที่ปุ่มใช้ */
+
+.login-title, .login-sub{
+  margin: 0;                /* เก็บระยะให้ฟิตใน 410px */
+}
+
+/** Logout **/
+
+.logout-btn{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;          /* ระยะระหว่างไอคอนกับคำว่า Logout */
+  line-height: 1;    /* ไม่ให้ปุ่มสูงเกินจำเป็น */
+}
+
+.btn-logout{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;               /* ระยะไอคอนกับตัวอักษร */
+  line-height: 1;
+}
+
+.btn-logout::before{
+  content: "";
+  width: 18px;
+  height: 18px;
+  background-color: currentColor;
+
+  /* รองรับ Chrome/Firefox/Edge */
+  mask: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>\
+<path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/>\
+<path d='M16 17l5-5-5-5'/>\
+<path d='M21 12H9'/>\
+</svg>") center / contain no-repeat;
+}

@@ -85,7 +85,7 @@ function AddVesselModal({ open, onClose, onCreated }) {
         <div className="flex justify-end gap-2 mt-4">
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Adding…' : 'Add'}
           </button>
         </div>
       </form>

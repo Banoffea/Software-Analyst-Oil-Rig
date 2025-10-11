@@ -40,7 +40,7 @@ export default function UsersAdminPage() {
         <h1 className="page-title">User Management</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Create user</button>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add user</button>
         </div>
       </div>
 
@@ -227,7 +227,7 @@ function UserModal({ row, onClose, onSaved }) {
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
             <button className="btn btn-primary" disabled={busy}>
-              {row ? (busy ? 'Saving…' : 'Save') : (busy ? 'Creating…' : 'Create')}
+              {row ? (busy ? 'Saving…' : 'Save') : (busy ? 'Adding…' : 'Add')}
             </button>
           </div>
         </form>

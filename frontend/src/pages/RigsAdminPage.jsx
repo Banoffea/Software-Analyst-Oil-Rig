@@ -210,7 +210,7 @@ function RigModal({ row, onClose, onSaved }) {
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy}>{row ? 'Save' : 'Create'}</button>
+            <button className="btn btn-primary" disabled={busy}>{row ? 'Adding…' : 'Add'}</button>
           </div>
         </form>
       </div>
