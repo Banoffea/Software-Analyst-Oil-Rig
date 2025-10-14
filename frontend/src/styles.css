@@ -3,7 +3,7 @@
   --card: #18232F;
   --line: #233748;
   --field: #233748;
-  --text: #FFFFFF;
+  --text: #ffffff;
   --muted: #92B0C9;
   --brand: #138AEC;
   --brand-600: #1e5fe6;
@@ -30,15 +30,21 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 .ml-auto { margin-left: auto; }
 
 /* Buttons */
-.btn { border: 1px solid var(--line); background: var(--card); padding: 8px 12px; border-radius: 10px; cursor: pointer; }
+.btn { border: 1px solid var(--line); background: var(--card); padding: 8px 12px; border-radius: 10px; cursor: pointer;}
 .btn:hover { background: var(--field); }
 .btn-primary { border: none; background: var(--brand); color: var(--text); }
 .btn-primary:hover { background: var(--brand-600); }
 .btn-outline { background: transparent; color: var(--muted); border: none; }
 .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 
+/* ทำให้ขนาด Row เท่ากัน */
+.table tbody tr {
+  height: 70px;
+  vertical-align: middle;
+}
+
 /* Page */
-.page-title { font-size: 24px; font-weight: 700; margin: 0; }
+.page-title { font-size: 30px; font-weight: 700; margin: 21px 45px; }
 
 /* Card */
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 30px; }
@@ -129,7 +135,7 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45); /* เทาใส */
+  background: rgba(16, 42, 15, 0.45); /* เทาใส */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -262,3 +268,5 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 <path d='M21 12H9'/>\
 </svg>") center / contain no-repeat;
 }
+
+

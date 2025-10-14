@@ -5,11 +5,7 @@ import IssueModal from '../components/IssueModal';
 import { useAuth } from '../utils/auth.jsx';
 
 const POLL_MS = 30000;
-
-// dropdown (row) shows ONLY these three
 const BASIC_STATUSES = ['open', 'in_progress', 'waiting_approval'];
-
-// used for badges/filters (unchanged behavior)
 const ALL_STATUSES = ['open','in_progress','waiting_approval','need_rework','approved'];
 
 function fmt(ts) {
@@ -37,7 +33,6 @@ function StatusBadge({ v }) {
   return <span className="muted" style={{display:'inline-flex',alignItems:'center'}}><Dot color={map[v] || '#64748b'} />{(v || '-').replace('_',' ')}</span>;
 }
 
-/** Context formatter — แสดง reading/pos เสมอ (ถ้าไม่มีจะแสดง '-') */
 function contextText(row) {
   if (row.type === 'oil') {
     const rig = row.rig_id ? `Rig #${row.rig_id}` : 'Rig -';
@@ -66,16 +61,14 @@ export default function IssuesList() {
   const { me } = useAuth();
   const role = me?.role;
 
-  // who can change the three basic statuses via dropdown?
   const canChangeBasicStatus = (row) => {
     if (!role) return false;
-    if (role === 'admin' || role === 'manager') return true; // full control
+    if (role === 'admin' || role === 'manager') return true;
     if ((row.type === 'oil' || row.type === 'lot') && role === 'production') return true;
     if ((row.type === 'vessel' || row.type === 'shipment') && (role === 'fleet' || role === 'captain')) return true;
     return false;
   };
 
-  // who can approve / request rework (special buttons in the popup)?
   const canModerate = role === 'admin' || role === 'manager';
 
   const [typeTab, setTypeTab] = useState('all');
@@ -85,7 +78,6 @@ export default function IssuesList() {
   const [to, setTo] = useState('');
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [reportOpen, setReportOpen] = useState(false);
   const [viewRow, setViewRow] = useState(null);
 
@@ -110,7 +102,6 @@ export default function IssuesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, from, to]);
 
-  // counters
   const counts = useMemo(() => {
     const c = { all: allRows.length, oil: 0, lot: 0, vessel: 0, shipment: 0 };
     for (const r of allRows) {
@@ -122,7 +113,6 @@ export default function IssuesList() {
     return c;
   }, [allRows]);
 
-  // visible rows
   const visible = useMemo(() => {
     let rows = allRows;
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
@@ -130,11 +120,10 @@ export default function IssuesList() {
     return rows;
   }, [allRows, typeTab, status]);
 
-  // change status (basic three from dropdown)
   const changeStatus = async (row, newStatus) => {
-    if (row.status === 'approved') return;          // locked
-    if (!canChangeBasicStatus(row)) return;         // not allowed
-    if (!BASIC_STATUSES.includes(newStatus)) return; // safety
+    if (row.status === 'approved') return;
+    if (!canChangeBasicStatus(row)) return;
+    if (!BASIC_STATUSES.includes(newStatus)) return;
     if (row.status === newStatus) return;
 
     const prev = row.status;
@@ -153,7 +142,7 @@ export default function IssuesList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="page-title">Issues</h1>
+        <h1 className="page-title">Reports</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           <button className="btn btn-primary" onClick={() => setReportOpen(true)}>Report an issue</button>
@@ -161,37 +150,63 @@ export default function IssuesList() {
       </div>
 
       <div className="card">
-        <div className="card-head">
-          <div className="flex items-center gap-2">
+        {/* Toolbar — ทั้ง dropdown ประเภท, search, status, date อยู่แถวเดียว */}
+        <div className="card-head flex items-center gap-2 flex-wrap px-3 py-3">
+          {/* Search bar */}
+          <input
+            className="input"
+            placeholder="Search title/description"
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            style={{ minWidth: 400, maxWidth: 600 }}
+          />
+          
+          {/* Dropdown ประเภท ALL */}
+          <select
+            className="select"
+            value={typeTab}
+            onChange={(e) => setTypeTab(e.target.value)}
+            style={{ minWidth: 140, maxWidth: 150 }}
+          >
             {TABS.map(t => (
-              <button
-                key={t}
-                className={`btn ${typeTab===t ? 'btn-primary' : 'btn-ghost'}`}
-                onClick={() => setTypeTab(t)}
-              >
-                {t[0].toUpperCase()+t.slice(1)} <span className="muted ml-2">({counts[t] ?? 0})</span>
-              </button>
+              <option key={t} value={t}>
+                {t[0].toUpperCase() + t.slice(1)} ({counts[t] ?? 0})
+              </option>
             ))}
-          </div>
+          </select>
 
-          <div className="flex items-center gap-2">
-            <input
-              className="input"
-              placeholder="Search title/description"
-              value={q}
-              onChange={e=>setQ(e.target.value)}
-              style={{minWidth:220}}
-            />
-            <select className="select" value={status} onChange={e=>setStatus(e.target.value)}>
-              <option value="all">All status</option>
-              {ALL_STATUSES.map(s => (
-                <option key={s} value={s}>{s.replace('_',' ')}</option>
-              ))}
-            </select>
-            <input type="datetime-local" className="input" value={from} onChange={e=>setFrom(e.target.value)} />
-            <span className="muted">to</span>
-            <input type="datetime-local" className="input" value={to} onChange={e=>setTo(e.target.value)} />
-          </div>
+          {/* Dropdown Status */}
+          <select
+            className="select"
+            value={status}
+            onChange={e => setStatus(e.target.value)}
+            style={{ minWidth: 150, maxWidth: 170 }}
+          >
+            <option value="all">All status</option>
+            {ALL_STATUSES.map(s => (
+              <option key={s} value={s}>{s.replace('_',' ')}</option>
+            ))}
+          </select>
+
+          {/* Date From */}
+          <input
+            type="datetime-local"
+            className="input"
+            value={from}
+            onChange={e => setFrom(e.target.value)}
+            style={{ maxWidth: 200 }}
+          />
+
+          <span className="muted">to</span>
+
+          {/* Date To */}
+          <input
+            type="datetime-local"
+            className="input"
+            value={to}
+            onChange={e => setTo(e.target.value)}
+            style={{ maxWidth: 200 }}
+          />
         </div>
 
         <div className="table-wrap">
@@ -230,40 +245,35 @@ export default function IssuesList() {
                   <td className="muted">{fmt(r.anchor_time)}</td>
                   <td className="muted">{fmt(r.created_at)}</td>
 
-                  {/* prevent opening modal when using the dropdown */}
                   <td onClick={(e)=>e.stopPropagation()}>
-                  <div className="flex items-center gap-2">
-                    {r.status === 'approved' ? (
-                      // ✅ ถ้า approved ให้แสดงป้ายสีเขียวแทน dropdown
-                      <span
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: 5,
-                          color: '#10b981',
-                          fontSize: 14
-                          
-                        }}
-                      >
-                        approved
-                      </span>
-                    ) : (
-                      // ปกติยังเป็น dropdown สถานะพื้นฐาน 3 ค่า
-                      <select
-                        className="select"
-                        style={{minWidth:160}}
-                        value={r.status}
-                        onChange={(e)=>changeStatus(r, e.target.value)}
-                        disabled={r.__saving || !canChangeBasicStatus(r)}
-                      >
-                        {BASIC_STATUSES.map(s => (
-                          <option key={s} value={s}>{s.replace('_',' ')}</option>
-                        ))}
-                      </select>
-                    )}
-
-                    {r.__saving && <span className="muted text-xs">Saving…</span>}
-                  </div>
-                </td>
+                    <div className="flex items-center gap-2">
+                      {r.status === 'approved' ? (
+                        <span
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 5,
+                            color: '#10b981',
+                            fontSize: 14
+                          }}
+                        >
+                          approved
+                        </span>
+                      ) : (
+                        <select
+                          className="select"
+                          style={{minWidth:160}}
+                          value={r.status}
+                          onChange={(e)=>changeStatus(r, e.target.value)}
+                          disabled={r.__saving || !canChangeBasicStatus(r)}
+                        >
+                          {BASIC_STATUSES.map(s => (
+                            <option key={s} value={s}>{s.replace('_',' ')}</option>
+                          ))}
+                        </select>
+                      )}
+                      {r.__saving && <span className="muted text-xs">Saving…</span>}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -330,7 +340,6 @@ function IssueDetailModal({ row, onClose, canModerate, onStatusChange }) {
           </div>
         </div>
 
-        {/* Footer: Close on left, actions on right */}
         <div className="flex justify-between mt-4">
           <button className="btn" onClick={onClose}>Close</button>
 
@@ -341,7 +350,7 @@ function IssueDetailModal({ row, onClose, canModerate, onStatusChange }) {
                 onClick={() => setStatus('need_rework')}
                 disabled={busy}
                 title="Request changes before approval"
-                style={{ background:'#ef4444', borderColor:'#ef4444', color:'#fff' }} // red
+                style={{ background:'#ef4444', borderColor:'#ef4444', color:'#fff'  }}
               >
                 Request rework
               </button>
@@ -349,7 +358,7 @@ function IssueDetailModal({ row, onClose, canModerate, onStatusChange }) {
                 className="btn"
                 onClick={() => setStatus('approved')}
                 disabled={busy}
-                style={{ background:'#10b981', borderColor:'#10b981', color:'#fff' }} // green
+                style={{ background:'#10b981', borderColor:'#10b981', color:'#fff' }}
               >
                 Approve
               </button>
