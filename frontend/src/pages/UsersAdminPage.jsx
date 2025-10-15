@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { listUsers, createUser, updateUser, deleteUser } from '../api/adminUsers';
 
-// ใช้ชุด role ให้ตรง enum ในตารางจริง
-const ROLES = ['production', 'fleet', 'manager', 'admin'];
+// Keep this list in sync with your backend/DB enum
+const ROLES = ['production', 'fleet', 'captain', 'manager', 'admin'];
 
 function fmt(ts) {
   if (!ts) return '-';
@@ -128,7 +128,6 @@ export default function UsersAdminPage() {
 }
 
 function UserModal({ row, onClose, onSaved }) {
-  // สคีมาตรงตารางจริง
   const [username, setUsername] = useState(row?.username || '');
   const [displayName, setDisplayName] = useState(row?.display_name || '');
   const [role, setRole] = useState(row?.role || 'production');
@@ -144,7 +143,7 @@ function UserModal({ row, onClose, onSaved }) {
           display_name: displayName,
           role,
         };
-        if (password) payload.password = password; // เปลี่ยนรหัสผ่านเฉพาะเวลาตั้งค่า
+        if (password) payload.password = password; // only change when provided
         await updateUser(row.id, payload);
       } else {
         if (!username.trim() || !password.trim()) {
@@ -155,7 +154,7 @@ function UserModal({ row, onClose, onSaved }) {
         await createUser({
           username: username.trim(),
           password: password.trim(),
-          display_name: displayName.trim() || username.trim(),
+          display_name: (displayName || username).trim(),
           role,
         });
       }

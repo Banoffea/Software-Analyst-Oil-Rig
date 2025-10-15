@@ -1,11 +1,12 @@
 // backend/src/controllers/issuesController.js
 const db = require('../db');
+const sharp = require('sharp'); // <-- compress/resize before storing BLOBs
 
 const VALID_STATUSES = [
-  'open',
   'in_progress',
-  'waiting_approval',
   'need_rework',
+  'awaiting_fleet_approval',
+  'awaiting_manage_approval',
   'approved',
 ];
 
@@ -30,11 +31,11 @@ const normalizeObservedAt = (s) => {
   return null;
 };
 
-// configurable window (seconds) to consider a reading/position "near" the chosen time
+// configurable window (seconds) for "nearest" selection
 const WINDOW_SEC = Number(process.env.ISSUE_READING_WINDOW_SEC || 1800); // 30 minutes
 
-// ---- nearest helpers (use indexed queries: <= ts and >= ts) ----
-async function findNearestReadingAt(rigId, ts /* 'YYYY-MM-DD HH:mm:ss' */) {
+// ---- nearest helpers ----
+async function findNearestReadingAt(rigId, ts) {
   const [beforeRows] = await db.query(
     `SELECT id, lot_id, recorded_at
      FROM product_readings
@@ -96,31 +97,6 @@ function withinWindow(recordedAt, ts) {
   return Math.abs((new Date(recordedAt) - new Date(ts)) / 1000) <= WINDOW_SEC;
 }
 
-// --- shipment helpers ---
-async function getShipmentById(id) {
-  const [rows] = await db.query(
-    `SELECT id, vessel_id, origin_rig_id, destination, depart_at, arrive_at, status
-     FROM shipments WHERE id=? LIMIT 1`, [id]
-  );
-  return rows[0] || null;
-}
-
-// หา shipment ที่ครอบคลุมเวลานั้น (อยู่ระหว่าง depart_at..arrive_at)
-async function findShipmentCovering(vesselId, ts) {
-  const [rows] = await db.query(
-    `SELECT id, vessel_id, origin_rig_id, destination, depart_at, arrive_at, status
-     FROM shipments
-     WHERE vessel_id=?
-       AND (depart_at IS NULL OR depart_at <= ?)
-       AND (arrive_at IS NULL OR ? <= arrive_at)
-     ORDER BY COALESCE(arrive_at, '9999-12-31 23:59:59') DESC,
-              COALESCE(depart_at, '0000-01-01 00:00:00') DESC
-     LIMIT 1`,
-    [vesselId, ts, ts]
-  );
-  return rows[0] || null;
-}
-
 // =============== List ===============
 exports.list = async (req, res) => {
   const { type, rig_id, vessel_id, lot_id, shipment_id, status, severity, from, to, q, limit = 100 } = req.query;
@@ -128,13 +104,14 @@ exports.list = async (req, res) => {
   const where = [];
   const vals = [];
 
-  // role filter (ย้ายมาไว้หลังประกาศ where)
+  // role filter
   const role = req.user?.role;
   if (role === 'production') {
     where.push("(type IN ('oil','lot'))");
   } else if (role === 'captain' || role === 'fleet') {
     where.push("(type IN ('vessel','shipment'))");
   }
+  // admin/manager see all
 
   if (type)         { where.push('type=?'); vals.push(type); }
   if (rig_id)       { where.push('rig_id=?'); vals.push(rig_id); }
@@ -174,8 +151,13 @@ exports.getOne = async (req, res) => {
   const [rows] = await db.query('SELECT * FROM issues WHERE id=?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
   const issue = rows[0];
-  const [photos] = await db.query('SELECT id, file_path FROM issue_photos WHERE issue_id=? ORDER BY id', [issue.id]);
-  issue.photos = photos;
+
+  // return photo API URLs (no bytes in payload)
+  const [photos] = await db.query(
+    'SELECT id FROM issue_photos WHERE issue_id=? ORDER BY id',
+    [issue.id]
+  );
+  issue.photos = photos.map(p => ({ id: p.id, file_path: `/api/issues/photo/${p.id}` }));
   res.json(issue);
 };
 
@@ -282,6 +264,7 @@ exports.create = async (req, res) => {
     }
     if (!title) return res.status(400).json({ message: 'title required' });
 
+    // Admin view-only
     if (req.user?.role === 'admin') {
       return res.status(403).json({ message: 'Admins cannot create issues' });
     }
@@ -327,8 +310,9 @@ exports.update = async (req, res) => {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    if (status === 'approved' && !['manager','admin'].includes(req.user?.role)) {
-      return res.status(403).json({ message: 'Only manager or admin can approve.' });
+    // Only MANAGER can move to approved — admin cannot
+    if (status === 'approved' && req.user?.role !== 'manager') {
+      return res.status(403).json({ message: 'Only manager can approve.' });
     }
 
     const newStatus = status ?? curr.status;
@@ -345,6 +329,7 @@ function nextStatusAfterSubmit(type){
   return (type === 'oil' || type === 'lot') ? 'awaiting_manage_approval' : 'awaiting_fleet_approval';
 }
 
+// =============== Submit report (stores photos in DB) ===============
 exports.submitReport = async (req, res) => {
   const id = Number(req.params.id);
   const { finish_time, action_report } = req.body;
@@ -353,10 +338,12 @@ exports.submitReport = async (req, res) => {
   const [[row]] = await db.query('SELECT id, type, status FROM issues WHERE id=?', [id]);
   if (!row) return res.status(404).json({ message: 'Not found' });
 
-  const isProd = role === 'production' && (row.type === 'oil' || row.type === 'lot');
-  const isVesselTeam = (role === 'captain' || role === 'fleet') && (row.type === 'vessel' || row.type === 'shipment');
-  if (!isProd && !isVesselTeam && role !== 'admin' && role !== 'manager') {
-    return res.status(403).json({ message: 'Not allowed' });
+  // Who may submit (admin = NO):
+  const isProd        = role === 'production' && (row.type === 'oil' || row.type === 'lot');
+  const isVesselTeam  = (role === 'captain' || role === 'fleet') && (row.type === 'vessel' || row.type === 'shipment');
+  const isManager     = role === 'manager';
+  if (!(isProd || isVesselTeam || isManager)) {
+    return res.status(403).json({ message: 'Not allowed to submit' });
   }
 
   if (!['in_progress','need_rework'].includes(row.status)) {
@@ -371,14 +358,33 @@ exports.submitReport = async (req, res) => {
     [action_report.trim(), finish_time || null, nextStatusAfterSubmit(row.type), id]
   );
 
+  // Save images into DB (BLOB) — insert ONE BY ONE with compression to keep packets small
   if (req.files?.length) {
-    const values = req.files.map(f => [id, `/uploads/issues/${f.filename}`]);
-    await db.query('INSERT INTO issue_photos (issue_id, file_path) VALUES ?', [values]);
+    for (const f of req.files) {
+      try {
+        // Re-encode to JPEG and cap dimensions to reduce size
+        const jpegBuf = await sharp(f.buffer)
+          .rotate()
+          .resize({ width: 2560, height: 2560, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 82 })
+          .toBuffer();
+
+        const safeName = (f.originalname || 'image').replace(/[^\w.\-]+/g, '_');
+        await db.query(
+          'INSERT INTO issue_photos (issue_id, filename, mime, bytes) VALUES (?, ?, ?, ?)',
+          [id, safeName, 'image/jpeg', jpegBuf]
+        );
+      } catch (e) {
+        console.error('PHOTO SAVE ERROR:', e.message);
+        // continue; don't fail the whole submit because one image failed
+      }
+    }
   }
 
   res.json({ ok: true, id, status: nextStatusAfterSubmit(row.type) });
 };
 
+// =============== Approve / Reject ===============
 exports.approveIssue = async (req, res) => {
   const id = Number(req.params.id);
   const role = req.user?.role;
@@ -386,20 +392,19 @@ exports.approveIssue = async (req, res) => {
   const [[row]] = await db.query('SELECT id, status, finish_time FROM issues WHERE id=?', [id]);
   if (!row) return res.status(404).json({ message: 'Not found' });
 
-  // ขั้น Fleet/Captain
+  // Stage 1: fleet only
   if (row.status === 'awaiting_fleet_approval') {
-    if (!(role === 'fleet' || role === 'captain')) {
-      return res.status(403).json({ message: 'Only fleet/captain can approve here' });
+    if (role !== 'fleet') {
+      return res.status(403).json({ message: 'Only fleet can approve here' });
     }
-    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?',
-      ['awaiting_manage_approval', id]);
+    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?', ['awaiting_manage_approval', id]);
     return res.json({ ok: true, status: 'awaiting_manage_approval' });
   }
 
-  // ขั้น Manager/Admin (อนุมัติสุดท้าย) -> ตั้ง finish_time
+  // Final: manager only (admin/captain/fleet blocked)
   if (row.status === 'awaiting_manage_approval') {
-    if (!(role === 'manager' || role === 'admin')) {
-      return res.status(403).json({ message: 'Only manager/admin can approve here' });
+    if (role !== 'manager') {
+      return res.status(403).json({ message: 'Only manager can approve here' });
     }
     await db.query(`
       UPDATE issues
@@ -414,7 +419,6 @@ exports.approveIssue = async (req, res) => {
   return res.status(409).json({ message: 'Invalid state for approval' });
 };
 
-
 exports.rejectIssue = async (req, res) => {
   const id = Number(req.params.id);
   const role = req.user?.role;
@@ -423,9 +427,9 @@ exports.rejectIssue = async (req, res) => {
   if (!row) return res.status(404).json({ message: 'Not found' });
 
   if (row.status === 'awaiting_manage_approval') {
-    if (!(role === 'manager' || role === 'admin')) return res.status(403).json({ message: 'Only manager/admin can reject here' });
+    if (role !== 'manager') return res.status(403).json({ message: 'Only manager can reject here' });
   } else if (row.status === 'awaiting_fleet_approval') {
-    if (!(role === 'fleet' || role === 'captain')) return res.status(403).json({ message: 'Only fleet/captain can reject here' });
+    if (role !== 'fleet') return res.status(403).json({ message: 'Only fleet can reject here' });
   } else {
     return res.status(409).json({ message: 'Invalid state for reject' });
   }
@@ -434,6 +438,19 @@ exports.rejectIssue = async (req, res) => {
   await db.query('UPDATE issues SET action_report=NULL, finish_time=NULL, status=?, updated_at=NOW() WHERE id=?', ['need_rework', id]);
 
   res.json({ ok: true, status: 'need_rework' });
+};
+
+// =============== Stream photo (from DB) ===============
+exports.streamPhoto = async (req, res) => {
+  const photoId = Number(req.params.photoId);
+  const [[row]] = await db.query(
+    'SELECT mime, bytes FROM issue_photos WHERE id=? LIMIT 1',
+    [photoId]
+  );
+  if (!row) return res.status(404).end();
+  res.setHeader('Content-Type', row.mime || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  return res.end(row.bytes);
 };
 
 module.exports = exports;

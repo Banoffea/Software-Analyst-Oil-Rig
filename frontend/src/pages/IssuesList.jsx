@@ -1,7 +1,6 @@
 // src/pages/IssuesList.jsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { listIssues } from '../api/issues';
-import { getIssue } from '../api/issues';
+import { listIssues, getIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
 import IssueWorkModal from '../components/IssueWorkModal';
 
@@ -39,9 +38,9 @@ function SeverityBadge({ v }) {
 
 function StatusBadge({ v }) {
   const map = {
-    open:'#3b82f6',
+    open:'#3b82f6',                              // legacy (still displayable)
     in_progress:'#f59e0b',
-    waiting_approval:'#a855f7', // legacy, still shown if present
+    waiting_approval:'#a855f7',                 // legacy (still displayable)
     need_rework:'#ef4444',
     approved:'#10b981',
     awaiting_manage_approval:'#2563eb',
@@ -78,15 +77,13 @@ function contextText(row) {
   return '-';
 }
 
-const ALL_STATUSES = [
+/** Statuses available in the FILTER (legacy values removed) */
+const STATUS_FILTERS = [
   'in_progress',
   'need_rework',
   'awaiting_fleet_approval',
   'awaiting_manage_approval',
   'approved',
-  // keep legacy ones for filtering if they appear
-  'open',
-  'waiting_approval',
 ];
 
 export default function IssuesList() {
@@ -201,7 +198,7 @@ export default function IssuesList() {
             ))}
           </select>
 
-          {/* Status filter */}
+          {/* Status filter (legacy 'open' and 'waiting_approval' removed) */}
           <select
             className="select"
             value={status}
@@ -209,7 +206,7 @@ export default function IssuesList() {
             style={{ minWidth: 190, maxWidth: 220 }}
           >
             <option value="all">All status</option>
-            {ALL_STATUSES.map(s => (
+            {STATUS_FILTERS.map(s => (
               <option key={s} value={s}>{s.replaceAll('_',' ')}</option>
             ))}
           </select>
@@ -251,10 +248,7 @@ export default function IssuesList() {
               {loading && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
               {!loading && !visible.length && <tr><td colSpan={9} className="muted">No issues found</td></tr>}
               {!loading && visible.map(r => (
-                <tr
-                  key={r.id}
-                  className="hoverable"
-                >
+                <tr key={r.id} className="hoverable">
                   <td>#{r.id}</td>
                   <td className="capitalize">{r.type}</td>
                   <td className="muted">{contextText(r)}</td>

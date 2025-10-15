@@ -3,67 +3,102 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { submitIssueReport, approveIssue, rejectIssue } from '../api/issues';
 
 export default function IssueWorkModal({ row, role, onClose, onChanged }) {
-  const [files, setFiles] = useState([]);              // File[]
-  const [previews, setPreviews] = useState([]);        // [{url,name,size}]
+  const [files, setFiles] = useState([]);       // File[]
+  const [previews, setPreviews] = useState([]); // [{url,name,size}]
   const [finishAt, setFinishAt] = useState('');
   const [report, setReport] = useState('');
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
+  const finishRef = useRef(null);               // open native date picker
 
-  // --- Lightbox state (ฝังในไฟล์นี้ ไม่ต้อง import เพิ่ม) ---
+  // --- Lightbox state ---
   const [viewer, setViewer] = useState({ open: false, index: 0, images: [] });
   const openViewerFromPreviews = (i) =>
     setViewer({ open: true, index: i, images: previews.map(p => p.url) });
   const openViewerFromServer = (i) =>
     setViewer({ open: true, index: i, images: (row.photos || []).map(p => p.file_path) });
 
-  const editable = row.status === 'in_progress' || row.status === 'need_rework';
-  const canFleetApprove = (row.status === 'awaiting_fleet_approval') && (role === 'fleet' || role === 'captain');
-  const canMgrApprove   = (row.status === 'awaiting_manage_approval') && (role === 'manager' || role === 'admin');
+  // ===== Permissions by role/type =====
+  const roleCanSubmit = useMemo(() => {
+    if (role === 'manager') return true;
+    if (role === 'production') return row.type === 'oil' || row.type === 'lot';
+    if (role === 'fleet' || role === 'captain') return row.type === 'vessel' || row.type === 'shipment';
+    return false; // admin/others = view only
+  }, [role, row.type]);
 
-  // previews
+  // editable only when status is editable + role allowed + not admin
+  const editable = useMemo(
+    () =>
+      (row.status === 'in_progress' || row.status === 'need_rework') &&
+      role !== 'admin' &&
+      roleCanSubmit,
+    [row.status, role, roleCanSubmit]
+  );
+
+  const canFleetApprove = row.status === 'awaiting_fleet_approval' && role === 'fleet';
+  const canMgrApprove   = row.status === 'awaiting_manage_approval' && role === 'manager';
+
+  // helpers
+  const fmtDT = (ts) => (ts || '').replace('T', ' ').slice(0, 16);
+  const typeLabel = useMemo(() => (row.type === 'oil' ? 'Oil Rig Problems' : row.type), [row.type]);
+  const toDTLocalValue = (d) => {
+    const pad = (n) => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Previews
   useEffect(() => {
     previews.forEach(p => URL.revokeObjectURL(p.url));
     const next = (files || []).map(f => ({ url: URL.createObjectURL(f), name: f.name, size: f.size }));
     setPreviews(next);
-    // revoke on unmount
     return () => next.forEach(p => URL.revokeObjectURL(p.url));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files.length]);
 
+  // Prefill finishAt with "now" if editable & empty
+  useEffect(() => {
+    if (editable && !finishAt) setFinishAt(toDTLocalValue(new Date()));
+  }, [editable, finishAt]);
+
   // pick from input
   const onPick = (e) => {
+    if (!editable) return;
     const list = Array.from(e.target.files || []);
     addFiles(list);
   };
 
   // drag & drop
   const onDrop = (e) => {
+    if (!editable) return;
     e.preventDefault();
     setDragging(false);
     const list = Array.from(e.dataTransfer?.files || []);
     addFiles(list);
   };
-  const onDragOver = (e) => { e.preventDefault(); setDragging(true); };
-  const onDragLeave = (e) => { e.preventDefault(); setDragging(false); };
+  const onDragOver = (e) => { if (editable) { e.preventDefault(); setDragging(true); } };
+  const onDragLeave = (e) => { if (editable) { e.preventDefault(); setDragging(false); } };
 
   // only images + de-duplicate by name+size
   const addFiles = (list) => {
+    if (!editable) return;
     const imgs = list.filter(f => /^image\/(png|jpe?g|webp|gif)$/i.test(f.type));
     if (!imgs.length) return;
     setFiles(prev => {
       const map = new Map(prev.map(f => [f.name + ':' + f.size, f]));
       imgs.forEach(f => map.set(f.name + ':' + f.size, f));
-      return Array.from(map.values()).slice(0, 10); // cap 10 images
+      return Array.from(map.values()).slice(0, 10);
     });
   };
 
   const removeAt = (idx) => {
+    if (!editable) return;
     setFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   const doSubmit = async () => {
+    if (!editable) return;
+    if (!finishAt) return alert('Please select Finish Date and Time.');
     if (!report.trim()) return alert('Please fill in the Cause and Action Report.');
     if (files.length === 0) return alert('Please attach at least one photo.');
     setBusy(true);
@@ -71,7 +106,7 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
       await submitIssueReport(row.id, { finish_time: finishAt, action_report: report, files });
       onChanged?.(row.id);
       onClose?.();
-    } catch (e) {
+    } catch {
       alert('Submit failed');
     } finally { setBusy(false); }
   };
@@ -79,8 +114,7 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
   const doApprove = async () => {
     setBusy(true);
     try {
-      const res = await approveIssue(row.id); // คาดหวัง { status, finish_time, approved_at }
-      // อัปเดตข้อมูลในจอให้เห็นทันที (ถ้ามี)
+      const res = await approveIssue(row.id);
       if (res?.finish_time) row.finish_time = res.finish_time;
       if (res?.status) row.status = res.status;
       onChanged?.(row.id);
@@ -89,7 +123,6 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
       alert('Approve failed');
     } finally { setBusy(false); }
   };
-
   const doReject = async () => {
     if (!confirm('Send back for rework? Photos and report text will be removed.')) return;
     setBusy(true);
@@ -97,10 +130,6 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
     catch { alert('Reject failed'); }
     finally { setBusy(false); }
   };
-
-  // helpers
-  const fmtDT = (ts) => (ts || '').replace('T', ' ').slice(0, 16);
-  const typeLabel = useMemo(() => (row.type === 'oil' ? 'Oil Rig Problems' : row.type), [row.type]);
 
   return (
     <div className="iwm-backdrop" onMouseDown={e=>{ if (e.target===e.currentTarget) onClose?.(); }}>
@@ -111,26 +140,37 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
         </div>
 
         <div className="iwm-body">
-          {/* Read-only header rows */}
           <KV k="Notice Topic :" v={row.title} />
           <KV k="Start Date and Time :" v={fmtDT(row.anchor_time)} />
           <KV k="Type :" v={typeLabel} />
           <KV k="Severity :" v={row.severity} />
 
-          {/* โชว์รายละเอียดแบบอ่านง่ายขึ้น */}
-            {/* Issue details as plain text */}
-            <KV k="Issue Details :">
+          {/* Issue details as plain text */}
+          <KV k="Issue Details :">
             <div className="iwm-plain">{row.description || '-'}</div>
-            </KV>
+          </KV>
+
           {editable ? (
             <>
+              {/* Finish time + calendar */}
               <KV k="Finish Date and Time :">
-                <input
-                  type="datetime-local"
-                  className="iwm-input"
-                  value={finishAt}
-                  onChange={(e)=>setFinishAt(e.target.value)}
-                />
+                <div className="iwm-dtwrap">
+                  <input
+                    ref={finishRef}
+                    type="datetime-local"
+                    className="iwm-input"
+                    value={finishAt}
+                    onChange={(e)=>setFinishAt(e.target.value)}
+                    required
+                    step="60"
+                  />
+                  <button
+                    type="button"
+                    className="iwm-calbtn"
+                    title="Open calendar"
+                    onClick={()=> (finishRef.current?.showPicker ? finishRef.current.showPicker() : finishRef.current?.focus())}
+                  >📅</button>
+                </div>
               </KV>
 
               <div className="iwm-field">
@@ -141,22 +181,21 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
                   value={report}
                   onChange={(e)=>setReport(e.target.value)}
                   placeholder="Provide a detailed description of what really happened and corrective actions..."
+                  required
                 />
               </div>
 
               <div className="iwm-field">
                 <div className="iwm-label">Attach Photo(s) :</div>
-
-                {/* Upload box */}
                 <div
                   className={`iwm-drop ${dragging ? 'drag' : ''}`}
                   onDragOver={onDragOver}
                   onDragLeave={onDragLeave}
                   onDrop={onDrop}
-                  onClick={()=>inputRef.current?.click()}
+                  onClick={()=> editable && inputRef.current?.click()}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e)=> (e.key==='Enter' || e.key===' ') && inputRef.current?.click()}
+                  onKeyDown={(e)=> (editable && (e.key==='Enter' || e.key===' ') && inputRef.current?.click())}
                   aria-label="Upload a file or drag and drop"
                 >
                   <div className="iwm-plus">＋</div>
@@ -170,15 +209,14 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
                     accept="image/*"
                     onChange={onPick}
                     style={{display:'none'}}
+                    disabled={!editable}
                   />
                 </div>
 
-                {/* Previews */}
                 {previews.length > 0 && (
                   <div className="iwm-grid">
                     {previews.map((p, i) => (
                       <div key={p.url} className="iwm-thumb">
-                        {/* คลิกเพื่อขยาย */}
                         <img
                           src={p.url}
                           alt={p.name}
@@ -220,7 +258,6 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
                   <div className="iwm-grid">
                     {row.photos.map((p, i) => (
                       <div key={p.id} className="iwm-thumb readonly">
-                        {/* คลิกเพื่อขยาย */}
                         <img
                           src={p.file_path}
                           alt=""
@@ -236,7 +273,8 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
 
               {(canFleetApprove || canMgrApprove) ? (
                 <div className="iwm-foot center">
-                  <button className="btn primary" onClick={doApprove} disabled={busy}>Approve</button>
+                  {canFleetApprove && <button className="btn primary" onClick={doApprove} disabled={busy}>Approve</button>}
+                  {canMgrApprove &&   <button className="btn primary" onClick={doApprove} disabled={busy}>Approve</button>}
                   <button className="btn danger" onClick={doReject} disabled={busy}>Reject</button>
                 </div>
               ) : (
@@ -273,7 +311,7 @@ function KV({ k, v, children }) {
   );
 }
 
-/* ---------- Inline Lightbox Component (ไม่มี dependency) ---------- */
+/* --- Lightbox (same as your working version) --- */
 function LightboxInline({ images = [], index = 0, onIndex, onClose }) {
   const [i, setI] = useState(index);
   const [scale, setScale] = useState(1);
@@ -283,7 +321,6 @@ function LightboxInline({ images = [], index = 0, onIndex, onClose }) {
 
   useEffect(() => setI(index), [index]);
   useEffect(() => onIndex?.(i), [i]);
-
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose?.();
@@ -299,14 +336,10 @@ function LightboxInline({ images = [], index = 0, onIndex, onClose }) {
     const next = Math.min(5, Math.max(1, scale + (e.deltaY < 0 ? 0.2 : -0.2)));
     setScale(next);
   }
-  function onDown(e) {
-    dragging.current = true;
-    last.current = { x: e.clientX, y: e.clientY };
-  }
+  function onDown(e) { dragging.current = true; last.current = { x: e.clientX, y: e.clientY }; }
   function onMove(e) {
     if (!dragging.current || scale === 1) return;
-    const dx = e.clientX - last.current.x;
-    const dy = e.clientY - last.current.y;
+    const dx = e.clientX - last.current.x; const dy = e.clientY - last.current.y;
     last.current = { x: e.clientX, y: e.clientY };
     setOffset((o) => ({ x: o.x + dx, y: o.y + dy }));
   }
@@ -359,23 +392,10 @@ const css = `
 .iwm-input{width:100%;border:1px solid #374151;background:#0b1220;color:#e5e7eb;border-radius:12px;padding:12px 14px}
 .iwm-input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
 .iwm-box{border:1px solid #374151;background:#0b1220;color:#e5e7eb;border-radius:12px;padding:14px;white-space:pre-wrap;min-height:120px}
-
-/* bigger, scrollable text box for long details */
+.iwm-plain{white-space:pre-wrap;line-height:1.45;color:#e5e7eb}
 .iwm-box-lg{min-height:160px;max-height:260px;overflow:auto;white-space:pre-wrap;line-height:1.45}
 
-.iwm-drop{
-  border:1.5px dashed #334155;
-  border-radius:14px;
-  background:#0b1220;
-  padding:24px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex-direction:column;
-  gap:6px;
-  cursor:pointer;
-  transition:all .15s ease;
-}
+.iwm-drop{border:1.5px dashed #334155;border-radius:14px;background:#0b1220;padding:24px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;cursor:pointer;transition:all .15s ease;}
 .iwm-drop.drag{border-color:#60a5fa;background:#0b1220cc}
 .iwm-plus{font-size:32px;line-height:1.1;color:#94a3b8}
 .iwm-upload-title{color:#d1d5db;font-weight:600}
@@ -386,39 +406,30 @@ const css = `
 .iwm-thumb{position:relative;border-radius:10px;overflow:hidden;border:1px solid #334155;background:#111827}
 .iwm-thumb img{width:100%;height:100%;object-fit:cover;display:block;aspect-ratio:4/3}
 .iwm-thumb.readonly .iwm-remove{display:none}
-.iwm-remove{
-  position:absolute;top:6px;right:6px;
-  width:24px;height:24px;border-radius:999px;border:none;
-  background:#ef4444;color:#fff;cursor:pointer;line-height:24px;font-weight:700;
-  box-shadow:0 2px 6px rgba(0,0,0,.25)
-}
+.iwm-remove{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:999px;border:none;background:#ef4444;color:#fff;cursor:pointer;line-height:24px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.25)}
 
 .iwm-foot{display:flex;gap:10px;margin-top:16px}
 .iwm-foot.right{justify-content:flex-end}
 .iwm-foot.center{justify-content:center}
-
 .btn{padding:10px 16px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;border-radius:999px;cursor:pointer}
 .btn.ghost{background:#0b1220}
 .btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff}
 .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
 
-/* ---- Lightbox styles ---- */
-.lbk-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:70;}
-/* ไม่ให้ stage กินคลิกทับปุ่ม */
-.lbk-stage{position:absolute; inset:0; z-index:0; display:grid; place-items:center; pointer-events:none;}
-.lbk-img{max-width:95vw; max-height:85vh; user-select:none; pointer-events:auto;}
-/* ปุ่มลอยบนสุดและคลิกได้ */
-.lbk-ui{position:absolute; inset:0; z-index:3; pointer-events:none;}
-.lbk-ui .lbk-close, .lbk-ui .lbk-left, .lbk-ui .lbk-right{pointer-events:auto;}
-.lbk-ui .lbk-close{position:absolute; top:16px; right:16px; background:#fff; color:#000; border:none; border-radius:10px; padding:6px 10px; cursor:pointer;}
-.lbk-ui .lbk-left, .lbk-ui .lbk-right{
-  position:absolute; top:50%; transform:translateY(-50%);
-  background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:10px;
-  padding:10px 12px; cursor:pointer;
-}
-.lbk-ui .lbk-left{ left:16px; }
-.lbk-ui .lbk-right{ right:16px; }
-.lbk-toolbar{position:absolute; left:50%; bottom:16px; transform:translateX(-50%); z-index:3; display:flex; gap:8px; color:#fff; align-items:center;}
-.lbk-toolbar button{background:rgba(255,255,255,.14); color:#fff; border:none; border-radius:8px; padding:6px 10px; cursor:pointer}
-.lbk-hint{ opacity:.85; font-size:12px; margin-left:6px; }
+.iwm-dtwrap{position:relative;display:flex;align-items:center}
+.iwm-calbtn{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:#1f2937;color:#e5e7eb;border-radius:8px;padding:6px 8px;cursor:pointer}
+.iwm-calbtn:hover{background:#334155}
+
+/* Lightbox */
+.lbk-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:70}
+.lbk-stage{position:absolute;inset:0;z-index:0;display:grid;place-items:center;pointer-events:none}
+.lbk-img{max-width:95vw;max-height:85vh;user-select:none;pointer-events:auto}
+.lbk-ui{position:absolute;inset:0;z-index:3;pointer-events:none}
+.lbk-ui .lbk-close,.lbk-ui .lbk-left,.lbk-ui .lbk-right{pointer-events:auto}
+.lbk-ui .lbk-close{position:absolute;top:16px;right:16px;background:#fff;color:#000;border:none;border-radius:10px;padding:6px 10px;cursor:pointer}
+.lbk-ui .lbk-left,.lbk-ui .lbk-right{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:10px;padding:10px 12px;cursor:pointer}
+.lbk-ui .lbk-left{left:16px}.lbk-ui .lbk-right{right:16px}
+.lbk-toolbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:3;display:flex;gap:8px;color:#fff;align-items:center}
+.lbk-toolbar button{background:rgba(255,255,255,.14);color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer}
+.lbk-hint{opacity:.85;font-size:12px;margin-left:6px}
 `;
