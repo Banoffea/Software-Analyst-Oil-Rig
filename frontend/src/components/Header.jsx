@@ -4,38 +4,56 @@ import logo from '../assets/company_logo.png';
 
 export default function Header({ onLogout }) {
   const { me, loading } = useAuth();
+  const role = me?.role;
 
   const linkClass = ({ isActive }) => `nav-link${isActive ? ' active' : ''}`;
 
-  // admin/manager เท่านั้น
-  const canManage = !!me && (me.role === 'admin' || me.role === 'manager');
+  // สิทธิ์ของแต่ละหน้า
+  const allow = {
+    product: ['admin', 'manager', 'production'],
+    vessels: ['admin', 'manager', 'captain', 'fleet'],
+    reports: ['admin', 'manager', 'production', 'captain', 'fleet'],
+    rigs:    ['admin', 'manager', 'production'],
+    users:   ['admin'],
+  };
+  const can = (page) => !!role && allow[page]?.includes(role);
 
   return (
     <header className="site-header">
       <div className="container">
-        <img
-          src={logo}
-          alt="Logo"
-          width='auto'
-          height="43"
-        />
+        <img src={logo} alt="Logo" width="auto" height="43" />
         <div className="brand">OffshoreManagingDashboards</div>
 
         <nav className="nav">
-          <NavLink to="/" end className={linkClass}>Product</NavLink>
-          <NavLink to="/vessels" className={linkClass}>Vessels</NavLink>
-          <NavLink to="/issues" className={linkClass}>Reports</NavLink>
+          {/* Product -> ใช้เส้นทาง /product */}
+          {!loading && can('product') && (
+            <NavLink to="/product" className={linkClass}>Product</NavLink>
+          )}
 
-          {/* admin เท่านั้น */}
-          {!loading && canManage && (
-            <>
-              <NavLink to="/admin/rigs" className={linkClass}>Rigs</NavLink>
-              <NavLink to="/admin/users" className={linkClass}>User Management</NavLink>
-            </>
+          {/* Vessels */}
+          {!loading && can('vessels') && (
+            <NavLink to="/vessels" className={linkClass}>Vessels</NavLink>
+          )}
+
+          {/* Reports */}
+          {!loading && can('reports') && (
+            <NavLink to="/issues" className={linkClass}>Reports</NavLink>
+          )}
+
+          {/* Rigs */}
+          {!loading && can('rigs') && (
+            <NavLink to="/admin/rigs" className={linkClass}>Rigs</NavLink>
+          )}
+
+          {/* User Management (admin only) */}
+          {!loading && can('users') && (
+            <NavLink to="/admin/users" className={linkClass}>User Management</NavLink>
           )}
         </nav>
 
-        <button className="btn btn-outline ml-auto btn-logout" onClick={onLogout}>Log out</button>
+        <button className="btn btn-outline ml-auto btn-logout" onClick={onLogout}>
+          Log out
+        </button>
       </div>
     </header>
   );
