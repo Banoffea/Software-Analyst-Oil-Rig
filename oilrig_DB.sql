@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 21, 2025 at 02:01 PM
+-- Generation Time: Oct 15, 2025 at 01:21 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -37,11 +37,13 @@ CREATE TABLE `issues` (
   `vessel_position_id` bigint(20) DEFAULT NULL,
   `shipment_id` bigint(20) DEFAULT NULL,
   `severity` enum('low','medium','high','critical') NOT NULL DEFAULT 'low',
-  `status` enum('in_progress','waiting_approval','need_rework','approved') NOT NULL DEFAULT 'in_progress',
+  `status` enum('in_progress','need_rework','awaiting_fleet_approval','awaiting_manage_approval','approved') NOT NULL DEFAULT 'in_progress',
   `title` varchar(150) NOT NULL,
   `description` text DEFAULT NULL,
+  `action_report` text DEFAULT NULL,
   `reported_by` int(11) NOT NULL,
   `anchor_time` datetime NOT NULL,
+  `finish_time` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -50,24 +52,58 @@ CREATE TABLE `issues` (
 -- Dumping data for table `issues`
 --
 
-INSERT INTO `issues` (`id`, `type`, `rig_id`, `reading_id`, `lot_id`, `vessel_id`, `vessel_position_id`, `shipment_id`, `severity`, `status`, `title`, `description`, `reported_by`, `anchor_time`, `created_at`, `updated_at`) VALUES
-(1, 'oil', 1, 3214, NULL, NULL, NULL, NULL, 'low', 'in_progress', 'Qtl low', 'Qty ต่ำกว่าค่ากำหนด', 1, '2025-09-15 01:18:49', '2025-09-16 00:00:30', '2025-09-16 20:30:58'),
-(2, 'oil', 1, 1371, 102, NULL, NULL, NULL, 'low', '', 'sadfasdf', 'sadf', 1, '2025-09-14 11:23:00', '2025-09-16 00:23:30', '2025-09-16 00:23:30'),
-(3, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', 'approved', 'lot_14_09A', 'low qty', 1, '2025-09-16 00:00:00', '2025-09-16 17:22:24', '2025-09-20 16:56:18'),
-(4, 'vessel', NULL, NULL, NULL, 11, 91, NULL, 'low', '', 'V11 Issue19_09', 'เรือแล่นแต่ตำแหน่งไม่ขึ้น', 1, '2025-09-19 22:23:00', '2025-09-19 22:28:42', '2025-09-19 22:28:58'),
-(5, 'shipment', NULL, NULL, NULL, 11, NULL, 1008, 'low', '', 'Issue on voyage #1008', 'Depart long time ago', 1, '2025-09-20 00:49:00', '2025-09-20 00:49:23', '2025-09-20 00:49:23'),
-(6, 'oil', 1, NULL, NULL, NULL, NULL, NULL, 'low', '', 'Rig #1 issue', '', 1, '2025-09-16 01:04:00', '2025-09-20 01:05:36', '2025-09-20 01:05:36'),
-(7, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', '', 'Lot #500 issue', '', 1, '2025-09-16 00:00:00', '2025-09-20 01:06:44', '2025-09-20 01:06:44'),
-(8, 'vessel', NULL, NULL, NULL, 12, NULL, NULL, 'low', '', 'Vessel #12 issue', '', 1, '2025-09-20 01:07:00', '2025-09-20 01:07:07', '2025-09-20 01:07:07'),
-(9, 'vessel', NULL, NULL, NULL, 11, NULL, NULL, 'low', '', 'Vessel #11 issue', '', 1, '2025-09-20 04:10:00', '2025-09-20 01:10:34', '2025-09-20 01:10:34'),
-(10, 'vessel', NULL, NULL, NULL, 11, NULL, NULL, 'low', '', 'Vessel #11 issue', '', 1, '2025-09-20 05:14:00', '2025-09-20 01:14:59', '2025-09-20 01:14:59'),
-(11, 'oil', 1, NULL, NULL, NULL, NULL, NULL, 'low', '', 'Rig #1 issue', '', 1, '2025-09-20 05:18:00', '2025-09-20 01:19:09', '2025-09-20 01:19:09'),
-(12, 'oil', 1, 3076, 496, NULL, NULL, NULL, 'low', '', 'Rig #1 issue', '', 1, '2025-09-15 00:14:00', '2025-09-20 01:20:31', '2025-09-20 01:20:31'),
-(13, 'lot', 2, NULL, 497, NULL, NULL, NULL, 'low', '', 'Lot #497 issue', '', 1, '2025-09-15 00:00:00', '2025-09-20 01:23:48', '2025-09-20 01:23:48'),
-(14, 'lot', 2, NULL, 201, NULL, NULL, NULL, 'low', 'in_progress', 'Lot #201 issue', 'CO2 ต่ำกว่ากำหนด ', 1, '2025-09-14 00:00:00', '2025-09-20 12:00:05', '2025-09-20 12:00:25'),
-(15, 'oil', 1, 3217, 500, NULL, NULL, NULL, 'high', '', 'Rig #1 issue', '', 4, '2025-09-16 00:01:00', '2025-09-20 12:54:13', '2025-09-20 12:54:13'),
-(16, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', '', 'Lot #500 issue', '', 4, '2025-09-16 00:01:00', '2025-09-20 12:55:11', '2025-09-20 12:55:11'),
-(17, 'vessel', NULL, NULL, NULL, 11, 175, NULL, 'low', 'approved', 'Vessel #11 issue', '', 1, '2025-09-20 13:31:36', '2025-09-20 14:38:04', '2025-09-20 16:56:43');
+INSERT INTO `issues` (`id`, `type`, `rig_id`, `reading_id`, `lot_id`, `vessel_id`, `vessel_position_id`, `shipment_id`, `severity`, `status`, `title`, `description`, `action_report`, `reported_by`, `anchor_time`, `finish_time`, `created_at`, `updated_at`) VALUES
+(1, 'oil', 1, 3214, NULL, NULL, NULL, NULL, 'low', 'in_progress', 'Qtl low', 'Qty ต่ำกว่าค่ากำหนด', NULL, 1, '2025-09-15 01:18:49', NULL, '2025-09-16 00:00:30', '2025-09-16 20:30:58'),
+(2, 'oil', 1, 1371, 102, NULL, NULL, NULL, 'low', 'in_progress', 'sadfasdf', 'sadf', NULL, 1, '2025-09-14 11:23:00', NULL, '2025-09-16 00:23:30', '2025-10-15 18:13:28'),
+(3, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', 'approved', 'lot_14_09A', 'low qty', NULL, 1, '2025-09-16 00:00:00', NULL, '2025-09-16 17:22:24', '2025-09-20 16:56:18'),
+(4, 'vessel', NULL, NULL, NULL, 11, 91, NULL, 'low', 'in_progress', 'V11 Issue19_09', 'เรือแล่นแต่ตำแหน่งไม่ขึ้น', NULL, 1, '2025-09-19 22:23:00', NULL, '2025-09-19 22:28:42', '2025-10-15 18:13:28'),
+(5, 'shipment', NULL, NULL, NULL, 11, NULL, 1008, 'low', 'awaiting_manage_approval', 'Issue on voyage #1008', 'Depart long time ago', 'Issue Vessel ID 5', 1, '2025-09-20 00:49:00', '0000-00-00 00:00:00', '2025-09-20 00:49:23', '2025-10-15 18:15:48'),
+(6, 'oil', 1, NULL, NULL, NULL, NULL, NULL, 'low', 'in_progress', 'Rig #1 issue', '', NULL, 1, '2025-09-16 01:04:00', NULL, '2025-09-20 01:05:36', '2025-10-15 18:13:28'),
+(7, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', 'in_progress', 'Lot #500 issue', '', NULL, 1, '2025-09-16 00:00:00', NULL, '2025-09-20 01:06:44', '2025-10-15 18:13:28'),
+(8, 'vessel', NULL, NULL, NULL, 12, NULL, NULL, 'low', 'in_progress', 'Vessel #12 issue', '', NULL, 1, '2025-09-20 01:07:00', NULL, '2025-09-20 01:07:07', '2025-10-15 18:13:28'),
+(9, 'vessel', NULL, NULL, NULL, 11, NULL, NULL, 'low', 'awaiting_fleet_approval', 'Vessel #11 issue', '', 'I9 Rework', 1, '2025-09-20 04:10:00', '0000-00-00 00:00:00', '2025-09-20 01:10:34', '2025-10-15 18:17:31'),
+(10, 'vessel', NULL, NULL, NULL, 11, NULL, NULL, 'low', 'awaiting_fleet_approval', 'Vessel #11 issue', '', NULL, 1, '2025-09-20 05:14:00', NULL, '2025-09-20 01:14:59', '2025-10-15 18:12:25'),
+(11, 'oil', 1, NULL, NULL, NULL, NULL, NULL, 'low', 'in_progress', 'Rig #1 issue', '', NULL, 1, '2025-09-20 05:18:00', NULL, '2025-09-20 01:19:09', '2025-10-15 16:29:27'),
+(12, 'oil', 1, 3076, 496, NULL, NULL, NULL, 'low', 'in_progress', 'Rig #1 issue', '', NULL, 1, '2025-09-15 00:14:00', NULL, '2025-09-20 01:20:31', '2025-10-15 18:13:28'),
+(13, 'lot', 2, NULL, 497, NULL, NULL, NULL, 'low', 'in_progress', 'Lot #497 issue', '', NULL, 1, '2025-09-15 00:00:00', NULL, '2025-09-20 01:23:48', '2025-10-15 18:13:28'),
+(14, 'lot', 2, NULL, 201, NULL, NULL, NULL, 'low', 'in_progress', 'Lot #201 issue', 'CO2 ต่ำกว่ากำหนด ', NULL, 1, '2025-09-14 00:00:00', NULL, '2025-09-20 12:00:05', '2025-09-20 12:00:25'),
+(15, 'oil', 1, 3217, 500, NULL, NULL, NULL, 'high', 'in_progress', 'Rig #1 issue', '', NULL, 4, '2025-09-16 00:01:00', NULL, '2025-09-20 12:54:13', '2025-10-15 18:13:28'),
+(16, 'lot', 1, NULL, 500, NULL, NULL, NULL, 'low', 'in_progress', 'Lot #500 issue', '', NULL, 4, '2025-09-16 00:01:00', NULL, '2025-09-20 12:55:11', '2025-10-15 18:13:28'),
+(17, 'vessel', NULL, NULL, NULL, 11, 175, NULL, 'low', 'approved', 'Vessel #11 issue', '', NULL, 1, '2025-09-20 13:31:36', NULL, '2025-09-20 14:38:04', '2025-09-20 16:56:43'),
+(18, 'oil', 1, 3498, 546, NULL, NULL, NULL, 'critical', 'approved', 'Rig #1 issue', '', NULL, 1, '2025-09-21 18:14:28', NULL, '2025-09-27 15:04:30', '2025-09-27 16:51:49'),
+(19, 'vessel', NULL, NULL, NULL, 11, 175, NULL, 'medium', 'approved', 'Vessel #11 issue', '', NULL, 1, '2025-09-20 13:31:36', NULL, '2025-09-27 15:07:11', '2025-09-27 15:08:03'),
+(20, 'oil', 1, 3498, 546, NULL, NULL, NULL, 'high', 'awaiting_manage_approval', 'Rig #1 issue', '', NULL, 1, '2025-09-21 18:14:28', NULL, '2025-09-27 15:09:07', '2025-10-15 18:12:25'),
+(21, 'oil', 1, 3498, 546, NULL, NULL, NULL, 'high', 'need_rework', 'Rig #1 issue', '', NULL, 1, '2025-09-21 18:14:28', NULL, '2025-09-27 15:17:32', '2025-10-15 17:16:09'),
+(22, 'oil', 1, 794, 102, NULL, NULL, NULL, 'high', 'in_progress', 'Rig #1 Test_Issue', '', NULL, 1, '2025-09-14 01:32:00', NULL, '2025-09-27 15:32:52', '2025-10-15 18:13:28'),
+(23, 'lot', 1, NULL, 546, NULL, NULL, NULL, 'low', 'approved', 'Lot #546 issue', '', 'แก้ไข Issue 23', 1, '2025-09-21 18:14:28', '2025-10-15 18:05:07', '2025-09-27 15:38:42', '2025-10-15 18:05:07'),
+(24, 'oil', 3, NULL, NULL, NULL, NULL, NULL, 'low', 'approved', 'Rig #3 issue', '', NULL, 1, '2025-09-27 15:38:00', NULL, '2025-09-27 15:38:54', '2025-09-27 16:12:12'),
+(25, 'vessel', NULL, NULL, NULL, 11, NULL, NULL, 'low', 'approved', 'Vessel #11 issue', '', NULL, 1, '2025-09-27 15:39:00', NULL, '2025-09-27 15:39:02', '2025-09-27 15:40:16'),
+(26, 'shipment', NULL, NULL, NULL, 11, NULL, 1010, 'low', 'in_progress', 'Issue on voyage #1010', '', NULL, 1, '2025-09-19 01:54:16', NULL, '2025-09-27 15:39:42', '2025-10-15 16:29:27'),
+(27, 'oil', 4, NULL, NULL, NULL, NULL, NULL, 'low', 'approved', 'Rig #4 issue', 'sdfsadf', 'ทำการแก้ไขพร้อมแนบไฟล์ดังภาพครับ', 1, '2025-09-29 20:55:00', '2025-10-15 18:06:53', '2025-09-29 20:55:28', '2025-10-15 18:06:53');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `issue_photos`
+--
+
+CREATE TABLE `issue_photos` (
+  `id` bigint(20) NOT NULL,
+  `issue_id` bigint(20) NOT NULL,
+  `file_path` varchar(255) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `issue_photos`
+--
+
+INSERT INTO `issue_photos` (`id`, `issue_id`, `file_path`, `created_at`) VALUES
+(1, 27, '/uploads/issues/1760522400837-948184449.jpg', '2025-10-15 17:00:00'),
+(2, 27, '/uploads/issues/1760522400846-13760332.webp', '2025-10-15 17:00:00'),
+(7, 23, '/uploads/issues/1760525902628-619475822.jpg', '2025-10-15 17:58:22'),
+(8, 5, '/uploads/issues/1760526889810-64558398.jpg', '2025-10-15 18:14:49'),
+(10, 9, '/uploads/issues/1760527051283-147896066.jpg', '2025-10-15 18:17:31');
 
 -- --------------------------------------------------------
 
@@ -4015,6 +4051,13 @@ ALTER TABLE `issues`
 ALTER TABLE `issues` ADD FULLTEXT KEY `ft_issue_desc` (`title`,`description`);
 
 --
+-- Indexes for table `issue_photos`
+--
+ALTER TABLE `issue_photos`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `issue_id` (`issue_id`);
+
+--
 -- Indexes for table `oil_rigs`
 --
 ALTER TABLE `oil_rigs`
@@ -4088,7 +4131,13 @@ ALTER TABLE `vessel_positions`
 -- AUTO_INCREMENT for table `issues`
 --
 ALTER TABLE `issues`
-  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
+
+--
+-- AUTO_INCREMENT for table `issue_photos`
+--
+ALTER TABLE `issue_photos`
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `oil_rigs`
@@ -4146,6 +4195,12 @@ ALTER TABLE `issues`
   ADD CONSTRAINT `fk_issue_rig` FOREIGN KEY (`rig_id`) REFERENCES `oil_rigs` (`id`),
   ADD CONSTRAINT `fk_issue_vessel` FOREIGN KEY (`vessel_id`) REFERENCES `vessels` (`id`),
   ADD CONSTRAINT `fk_issue_vpos` FOREIGN KEY (`vessel_position_id`) REFERENCES `vessel_positions` (`id`);
+
+--
+-- Constraints for table `issue_photos`
+--
+ALTER TABLE `issue_photos`
+  ADD CONSTRAINT `fk_issue_photos_issue` FOREIGN KEY (`issue_id`) REFERENCES `issues` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `product_lots`
