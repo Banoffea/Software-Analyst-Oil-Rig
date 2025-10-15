@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { listVessels, listLatestPositions, createVessel } from '../api/vessels';
 import { listShipments } from '../api/shipments';       // ✅ เพิ่ม
 import IssueModal from '../components/IssueModal';
+import { useAuth } from '../utils/auth.jsx';
 
 const POLL_MS = 10000;          // refresh every 10s
 const SPEED_LIMIT = 15;         // overspeed threshold (kn)
@@ -169,6 +170,8 @@ function VesselHistoryModal({ vessel, open, onClose, onReport }) {
 
 // ---------- Page ----------
 export default function VesselDashboard() {
+  const { me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState('all'); // all | sailing | idle | loading
@@ -238,13 +241,18 @@ export default function VesselDashboard() {
   return (
     <div className="space-y-6">
       {/* Header bar */}
-      <div className="flex items-center justify-between">
-        <h1 className="page-title">Vessels</h1>
-        <div className="flex gap-2">
-          <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add vessel</button>
+        <div className="flex items-center justify-between">
+          <h1 className="page-title">Vessels</h1>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost" onClick={load}>Refresh</button>
+            {isAdmin && (                                    // <-- แสดงเฉพาะ admin
+              <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+                + Add vessel
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+
 
       {/* Filters */}
       <div className="card">

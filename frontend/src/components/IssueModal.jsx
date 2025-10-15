@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createIssue } from "../api/issues";
+import { useAuth } from "../utils/auth.jsx"; // ⬅️ ใช้ role ของผู้ใช้
 
 // "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
 function nowLocalForInput() {
@@ -40,6 +41,9 @@ export default function IssueModal({
   lockType = false,
   defaultTitle = "",
 }) {
+  const { me } = useAuth();
+  const isAdmin = me?.role === "admin"; // ⬅️ กัน admin ไม่ให้รายงาน
+
   const firstFieldRef = useRef(null);
   const descRef = useRef(null);
 
@@ -55,7 +59,7 @@ export default function IssueModal({
   const [title, setTitle] = useState(defaultTitle || "");
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
-  const [triedSubmit, setTriedSubmit] = useState(false); // <-- สำหรับโชว์ error
+  const [triedSubmit, setTriedSubmit] = useState(false);
 
   // occur time -> sent as anchor_time
   const [anchorAt, setAnchorAt] = useState(nowLocalForInput());
@@ -125,6 +129,25 @@ export default function IssueModal({
 
   if (!open) return null;
 
+  // ==== Admin view: แสดงหน้าว่าง + ข้อความ และปุ่มปิดเท่านั้น ====
+  if (isAdmin) {
+    return createPortal(
+      <div className="imodal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(false); }}>
+        <div className="imodal imodal-blank" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="imodal-blank-content">
+            <h3 className="imodal-blank-title">Reporting is disabled for admin</h3>
+            <p className="imodal-blank-msg">
+              Admin users cannot report issues. Please ask a permitted role to submit a report.
+            </p>
+            <button className="btn primary" onClick={() => onClose?.(false)}>Close</button>
+          </div>
+        </div>
+        <style>{CSS}</style>
+      </div>,
+      document.body
+    );
+  }
+
   const descOk = (desc || "").trim().length > 0;
   const showDescError = triedSubmit && !descOk;
 
@@ -134,9 +157,8 @@ export default function IssueModal({
 
     const descTrimmed = (desc || "").trim();
     if (!descTrimmed) {
-      // แสดงข้อความ + focus ช่อง Description
       descRef.current?.focus();
-      alert("Please enter a description."); // แจ้งเตือนด้วย popup
+      alert("Please enter a description.");
       return;
     }
 
@@ -181,9 +203,7 @@ export default function IssueModal({
       <div className="imodal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="imodal-head">
           <h3>Report an issue</h3>
-          <button className="x" onClick={() => !busy && onClose?.(false)} aria-label="Close">
-            ×
-          </button>
+          <button className="x" onClick={() => !busy && onClose?.(false)} aria-label="Close">×</button>
         </div>
 
         <form onSubmit={submit} className="imodal-body">
@@ -240,7 +260,7 @@ export default function IssueModal({
             </div>
           )}
 
-          {/* occur time (used as anchor_time) */}
+          {/* When did it occur */}
           <label className="f">
             <span>When did it occur?</span>
             <div className="row">
@@ -256,7 +276,7 @@ export default function IssueModal({
             </div>
           </label>
 
-          {/* context fields ... (เหมือนเดิม) */}
+          {/* Context fields */}
           {type === "oil" &&
             (derivedLock ? (
               <div className="f">
@@ -389,7 +409,7 @@ export default function IssueModal({
             <span>Description <span className="muted">(required)</span></span>
             <textarea
               ref={descRef}
-              className={`in ${showDescError ? 'error' : ''}`}
+              className={`in ${showDescError ? "error" : ""}`}
               rows={4}
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
@@ -436,4 +456,10 @@ const CSS = `
 .chip{display:inline-flex;align-items:center;gap:8px;background:#111827;color:#fff;border-radius:999px;padding:7px 12px}
 .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 @media (max-width:560px){ .grid2{grid-template-columns:1fr} }
+
+/* ===== Blank page style for admin ===== */
+.imodal.imodal-blank{width:min(540px,92vw); background:#fff;}
+.imodal-blank-content{padding:24px 20px; text-align:center}
+.imodal-blank-title{margin:0 0 8px 0; font-size:18px; font-weight:600}
+.imodal-blank-msg{margin:0 0 16px 0; color:#6b7280}
 `;

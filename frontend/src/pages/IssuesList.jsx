@@ -1,7 +1,6 @@
 // src/pages/IssuesList.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { listIssues, updateIssue } from '../api/issues';
-import IssueModal from '../components/IssueModal';
 import { useAuth } from '../utils/auth.jsx';
 
 const POLL_MS = 30000;
@@ -78,7 +77,6 @@ export default function IssuesList() {
   const [to, setTo] = useState('');
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [reportOpen, setReportOpen] = useState(false);
   const [viewRow, setViewRow] = useState(null);
 
   const load = async () => {
@@ -145,14 +143,13 @@ export default function IssuesList() {
         <h1 className="page-title">Reports</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-primary" onClick={() => setReportOpen(true)}>Report an issue</button>
+          {/* (Removed) Report an issue button */}
         </div>
       </div>
 
       <div className="card">
-        {/* Toolbar — ทั้ง dropdown ประเภท, search, status, date อยู่แถวเดียว */}
+        {/* Toolbar row */}
         <div className="card-head flex items-center gap-2 flex-wrap px-3 py-3">
-          {/* Search bar */}
           <input
             className="input"
             placeholder="Search title/description"
@@ -160,8 +157,7 @@ export default function IssuesList() {
             onChange={e => setQ(e.target.value)}
             style={{ minWidth: 400, maxWidth: 600 }}
           />
-          
-          {/* Dropdown ประเภท ALL */}
+
           <select
             className="select"
             value={typeTab}
@@ -175,7 +171,6 @@ export default function IssuesList() {
             ))}
           </select>
 
-          {/* Dropdown Status */}
           <select
             className="select"
             value={status}
@@ -188,7 +183,6 @@ export default function IssuesList() {
             ))}
           </select>
 
-          {/* Date From */}
           <input
             type="datetime-local"
             className="input"
@@ -196,10 +190,7 @@ export default function IssuesList() {
             onChange={e => setFrom(e.target.value)}
             style={{ maxWidth: 200 }}
           />
-
           <span className="muted">to</span>
-
-          {/* Date To */}
           <input
             type="datetime-local"
             className="input"
@@ -291,7 +282,7 @@ export default function IssuesList() {
           onClose={() => setViewRow(null)}
         />
       )}
-      <IssueModal open={reportOpen} onClose={()=>setReportOpen(false)} />
+      {/* Removed IssueModal since we no longer open it from here */}
     </div>
   );
 }

@@ -1,10 +1,13 @@
 // frontend/src/pages/RigsAdminPage.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { listRigs, createRig, updateRig, deleteRig } from '../api/rigs';
+import { useAuth } from '../utils/auth.jsx';
 
 const STATUSES = ['online','offline','maintenance'];
 
 export default function RigsAdminPage() {
+  const { me } = useAuth();
+  const isAdmin = me?.role === 'admin';
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
@@ -48,7 +51,14 @@ export default function RigsAdminPage() {
         <h1 className="page-title">Rigs</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-primary" onClick={()=>{ setEditRow(null); setShowModal(true); }}>+ Add rig</button>
+          {isAdmin && (  /* <-- show only for admin */
+            <button
+              className="btn btn-primary"
+              onClick={()=>{ setEditRow(null); setShowModal(true); }}
+            >
+              + Add rig
+            </button>
+          )}
         </div>
       </div>
 
