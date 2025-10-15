@@ -57,7 +57,6 @@ async function findNearestReadingAt(rigId, ts /* 'YYYY-MM-DD HH:mm:ss' */) {
   if (b && !a)  return withinWindow(b.recorded_at, ts) ? b : null;
   if (a && !b)  return withinWindow(a.recorded_at, ts) ? a : null;
 
-  // both exist: pick closer
   const diffB = Math.abs((new Date(b.recorded_at) - new Date(ts)) / 1000);
   const diffA = Math.abs((new Date(a.recorded_at) - new Date(ts)) / 1000);
   const best = diffB <= diffA ? b : a;
@@ -129,6 +128,14 @@ exports.list = async (req, res) => {
   const where = [];
   const vals = [];
 
+  // role filter (ย้ายมาไว้หลังประกาศ where)
+  const role = req.user?.role;
+  if (role === 'production') {
+    where.push("(type IN ('oil','lot'))");
+  } else if (role === 'captain' || role === 'fleet') {
+    where.push("(type IN ('vessel','shipment'))");
+  }
+
   if (type)         { where.push('type=?'); vals.push(type); }
   if (rig_id)       { where.push('rig_id=?'); vals.push(rig_id); }
   if (vessel_id)    { where.push('vessel_id=?'); vals.push(vessel_id); }
@@ -166,7 +173,10 @@ exports.list = async (req, res) => {
 exports.getOne = async (req, res) => {
   const [rows] = await db.query('SELECT * FROM issues WHERE id=?', [req.params.id]);
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
-  res.json(rows[0]);
+  const issue = rows[0];
+  const [photos] = await db.query('SELECT id, file_path FROM issue_photos WHERE issue_id=? ORDER BY id', [issue.id]);
+  issue.photos = photos;
+  res.json(issue);
 };
 
 // === Resolve context & anchor_time based on type and selected time ===
@@ -182,14 +192,10 @@ async function resolveContext(payload) {
     anchor_time: null,
   };
 
-  // ใช้เวลา anchor ที่ผู้ใช้ส่งมา (หรือเวลาปัจจุบันถ้าไม่ส่งมา)
   const ts = normalizeObservedAt(payload.anchor_time) || mysqlDateTimeBKK();
 
-  // ----- OIL : หา product_readings ที่ "ใกล้" เวลา ts ของแท่นนั้น -----
   if (out.type === 'oil') {
     if (!out.rig_id) throw new Error('rig_id required for type=oil');
-
-    // ถ้าบังคับส่ง reading_id มา → ตรวจสอบแล้วใช้ตัวนั้น
     if (out.reading_id) {
       const [[r]] = await db.query(
         'SELECT rig_id, lot_id, recorded_at FROM product_readings WHERE id=? AND rig_id=?',
@@ -200,28 +206,22 @@ async function resolveContext(payload) {
       out.anchor_time = r.recorded_at;
       return out;
     }
-
-    // ปกติ: เลือกตัวที่ใกล้ ts ที่สุด (ภายใน WINDOW_SEC)
     const nearest = await findNearestReadingAt(out.rig_id, ts);
     if (nearest) {
       out.reading_id = nearest.id;
       out.lot_id = nearest.lot_id ?? out.lot_id;
-      // ให้ anchor_time สัมพันธ์กับ reading จริง
       out.anchor_time = nearest.recorded_at;
     } else {
-      // ถ้าไม่พบเลย ก็ยึดเวลาที่ผู้ใช้เลือกไว้
       out.anchor_time = ts;
     }
     return out;
   }
 
-  // ----- LOT : เหมือนเดิม -----
   if (out.type === 'lot') {
     if (!out.lot_id) throw new Error('lot_id required for type=lot');
     const [[lot]] = await db.query('SELECT rig_id, lot_date FROM product_lots WHERE id=?', [out.lot_id]);
     if (!lot) throw new Error('lot not found');
     out.rig_id = lot.rig_id ?? out.rig_id;
-
     const [[r]] = await db.query(
       'SELECT MAX(recorded_at) AS last_ts FROM product_readings WHERE lot_id=?',
       [out.lot_id]
@@ -230,10 +230,8 @@ async function resolveContext(payload) {
     return out;
   }
 
-  // ----- VESSEL : หา position ใกล้ ts ที่สุด -----
   if (out.type === 'vessel') {
     if (!out.vessel_id) throw new Error('vessel_id required for type=vessel');
-
     if (out.vessel_position_id) {
       const [[p]] = await db.query(
         'SELECT recorded_at FROM vessel_positions WHERE id=? AND vessel_id=?',
@@ -243,7 +241,6 @@ async function resolveContext(payload) {
       out.anchor_time = p.recorded_at;
       return out;
     }
-
     const pos = await findNearestVesselPosAt(out.vessel_id, ts);
     if (pos) {
       out.vessel_position_id = pos.id;
@@ -254,7 +251,6 @@ async function resolveContext(payload) {
     return out;
   }
 
-  // ----- SHIPMENT : เดิม -----
   if (out.type === 'shipment') {
     if (out.shipment_id) {
       const [[s]] = await db.query(
@@ -273,11 +269,9 @@ async function resolveContext(payload) {
     return out;
   }
 
-  // fallback
   out.anchor_time = ts;
   return out;
 }
-
 
 // =============== Create ===============
 exports.create = async (req, res) => {
@@ -286,10 +280,11 @@ exports.create = async (req, res) => {
     if (!['oil','lot','vessel','shipment'].includes(type)) {
       return res.status(400).json({ message: 'invalid type' });
     }
-    if (!description || !String(description).trim()) {
-      return res.status(400).json({ message: 'description required' });
-    }
     if (!title) return res.status(400).json({ message: 'title required' });
+
+    if (req.user?.role === 'admin') {
+      return res.status(403).json({ message: 'Admins cannot create issues' });
+    }
 
     const ctx = await resolveContext({ ...req.body, type });
     const reported_by = req.user?.id || 1;
@@ -297,18 +292,17 @@ exports.create = async (req, res) => {
     const [r] = await db.query(
       `INSERT INTO issues
         (type, rig_id, reading_id, lot_id, vessel_id, vessel_position_id, shipment_id,
-        severity, title, description, reported_by, anchor_time,
-        created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+         severity, status, title, description, reported_by, anchor_time,
+         created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'in_progress', ?, ?, ?, ?, NOW(), NOW())`,
       [
         ctx.type, ctx.rig_id, ctx.reading_id, ctx.lot_id, ctx.vessel_id, ctx.vessel_position_id, ctx.shipment_id,
         severity, title, description, reported_by, ctx.anchor_time
       ]
     );
 
-
-    const [row] = await db.query('SELECT * FROM issues WHERE id=?', [r.insertId]);
-    res.status(201).json(row[0]);
+    const [[row]] = await db.query('SELECT * FROM issues WHERE id=?', [r.insertId]);
+    res.status(201).json(row);
   } catch (e) {
     console.error('ISSUE CREATE ERROR:', e);
     res.status(400).json({ message: e.message || 'create failed' });
@@ -325,17 +319,14 @@ exports.update = async (req, res) => {
     const [[curr]] = await db.query('SELECT status FROM issues WHERE id=? LIMIT 1', [id]);
     if (!curr) return res.status(404).json({ message: 'Issue not found' });
 
-    // ห้ามแก้ถ้าอนุมัติไปแล้ว
     if (curr.status === 'approved' && status && status !== curr.status) {
       return res.status(409).json({ message: 'Approved issues are immutable' });
     }
 
-    // ตรวจค่าถูกชุด
     if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    // ถ้าจะ set เป็น approved ต้องเป็น manager หรือ admin เท่านั้น
     if (status === 'approved' && !['manager','admin'].includes(req.user?.role)) {
       return res.status(403).json({ message: 'Only manager or admin can approve.' });
     }
@@ -349,3 +340,100 @@ exports.update = async (req, res) => {
   }
 };
 
+// helper
+function nextStatusAfterSubmit(type){
+  return (type === 'oil' || type === 'lot') ? 'awaiting_manage_approval' : 'awaiting_fleet_approval';
+}
+
+exports.submitReport = async (req, res) => {
+  const id = Number(req.params.id);
+  const { finish_time, action_report } = req.body;
+  const role = req.user?.role;
+
+  const [[row]] = await db.query('SELECT id, type, status FROM issues WHERE id=?', [id]);
+  if (!row) return res.status(404).json({ message: 'Not found' });
+
+  const isProd = role === 'production' && (row.type === 'oil' || row.type === 'lot');
+  const isVesselTeam = (role === 'captain' || role === 'fleet') && (row.type === 'vessel' || row.type === 'shipment');
+  if (!isProd && !isVesselTeam && role !== 'admin' && role !== 'manager') {
+    return res.status(403).json({ message: 'Not allowed' });
+  }
+
+  if (!['in_progress','need_rework'].includes(row.status)) {
+    return res.status(409).json({ message: 'This report is not editable in current status' });
+  }
+  if (!action_report || !action_report.trim()) {
+    return res.status(400).json({ message: 'action_report required' });
+  }
+
+  await db.query(
+    'UPDATE issues SET action_report=?, finish_time=?, status=?, updated_at=NOW() WHERE id=?',
+    [action_report.trim(), finish_time || null, nextStatusAfterSubmit(row.type), id]
+  );
+
+  if (req.files?.length) {
+    const values = req.files.map(f => [id, `/uploads/issues/${f.filename}`]);
+    await db.query('INSERT INTO issue_photos (issue_id, file_path) VALUES ?', [values]);
+  }
+
+  res.json({ ok: true, id, status: nextStatusAfterSubmit(row.type) });
+};
+
+exports.approveIssue = async (req, res) => {
+  const id = Number(req.params.id);
+  const role = req.user?.role;
+
+  const [[row]] = await db.query('SELECT id, status, finish_time FROM issues WHERE id=?', [id]);
+  if (!row) return res.status(404).json({ message: 'Not found' });
+
+  // ขั้น Fleet/Captain
+  if (row.status === 'awaiting_fleet_approval') {
+    if (!(role === 'fleet' || role === 'captain')) {
+      return res.status(403).json({ message: 'Only fleet/captain can approve here' });
+    }
+    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?',
+      ['awaiting_manage_approval', id]);
+    return res.json({ ok: true, status: 'awaiting_manage_approval' });
+  }
+
+  // ขั้น Manager/Admin (อนุมัติสุดท้าย) -> ตั้ง finish_time
+  if (row.status === 'awaiting_manage_approval') {
+    if (!(role === 'manager' || role === 'admin')) {
+      return res.status(403).json({ message: 'Only manager/admin can approve here' });
+    }
+    await db.query(`
+      UPDATE issues
+         SET status='approved',
+             finish_time = COALESCE(finish_time, NOW()),
+             updated_at = NOW()
+       WHERE id=?`, [id]);
+    const [[after]] = await db.query('SELECT status, finish_time FROM issues WHERE id=?', [id]);
+    return res.json({ ok: true, status: after.status, finish_time: after.finish_time });
+  }
+
+  return res.status(409).json({ message: 'Invalid state for approval' });
+};
+
+
+exports.rejectIssue = async (req, res) => {
+  const id = Number(req.params.id);
+  const role = req.user?.role;
+
+  const [[row]] = await db.query('SELECT id, status FROM issues WHERE id=?', [id]);
+  if (!row) return res.status(404).json({ message: 'Not found' });
+
+  if (row.status === 'awaiting_manage_approval') {
+    if (!(role === 'manager' || role === 'admin')) return res.status(403).json({ message: 'Only manager/admin can reject here' });
+  } else if (row.status === 'awaiting_fleet_approval') {
+    if (!(role === 'fleet' || role === 'captain')) return res.status(403).json({ message: 'Only fleet/captain can reject here' });
+  } else {
+    return res.status(409).json({ message: 'Invalid state for reject' });
+  }
+
+  await db.query('DELETE FROM issue_photos WHERE issue_id=?', [id]);
+  await db.query('UPDATE issues SET action_report=NULL, finish_time=NULL, status=?, updated_at=NOW() WHERE id=?', ['need_rework', id]);
+
+  res.json({ ok: true, status: 'need_rework' });
+};
+
+module.exports = exports;

@@ -3,11 +3,13 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
+const path = require('path');
 dotenv.config();
 
 const { requireAuth, requireAnyRole } = require('./middlewares/requireAuth');
 const authMiddleware = require('./middlewares/authMiddleware');
 // const ipAllowlist = require('./middlewares/ipAllowlist'); // <-- ไม่จำเป็นถ้าจะเปิดทุก IP
+
 
 const authRoutes      = require('./routes/auth');
 const adminUsers      = require('./routes/adminUsers');
@@ -58,6 +60,8 @@ app.use('/sim',     simStatic);
 
 // health check (ทดสอบจากเครื่องอื่นได้)
 app.get('/healthz', (_req, res) => res.send('ok'));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); 
 
 const PORT = process.env.PORT || 8000;
 // ✅ สำคัญ: ฟังทุกอินเตอร์เฟซ
