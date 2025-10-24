@@ -24,6 +24,8 @@ const oilSimApi       = require('./routes/oilSimApi');
 const oilSimStatic    = require('./routes/oilSimStatic');
 const simApi          = require('./routes/simulator_api');
 const simStatic       = require('./routes/simulator_ui');
+const simAllDay       = require('./routes/sim_all_day');
+
 
 const app = express();
 
@@ -53,6 +55,7 @@ app.use('/api/lots',        lotsRoutes);
 // ✅ Oil simulator (ไม่มีการล็อก IP)
 app.use('/api/oil-sim', oilSimApi);
 app.use('/oil-sim',     oilSimStatic);
+app.use('/', simAllDay);
 
 // ✅ Vessel simulator (เอา ipAllowlist ออก)
 app.use('/api/sim', simApi);
