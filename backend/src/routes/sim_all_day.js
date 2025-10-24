@@ -68,9 +68,9 @@ humidity:  { mean: 66.0, lo: 40.0, hi: 88.0, walk: 0.55, noise: 6.00, spikeP: 0.
 
 
 
-// สร้าง series แบบวันเดียวทั้งวัน (ทุก 5 วินาที) ที่ผันผวน
+// สร้าง series แบบวันเดียวทั้งวัน (ทุก 5 วินาที) — ไม่มีเทอม day/night
 function* volatileDaySeries(seedShift = 0) {
-  // initial state ใกล้ mean
+  // สถานะเริ่มใกล้ค่าเฉลี่ย (mean)
   let q  = CFG.qty.mean       + gauss(0, 0.8);
   let pr = CFG.pressure.mean  + gauss(0, 0.7);
   let hm = CFG.humidity.mean  + gauss(0, 1.2);
@@ -79,80 +79,99 @@ function* volatileDaySeries(seedShift = 0) {
   let h2 = CFG.h2s.mean       + gauss(0, 0.25);
   let wt = CFG.water.mean     + gauss(0, 0.007);
 
-    for (let i = 0; i < 24 * 60 * 60; i += 5) {
-    const t = (i + seedShift) / 5; // นับเป็นสเต็ป (ทุก 5 วินาทีหนึ่งสเต็ป)
-    const stepsPerDay = 24 * 60 * 60 / 5;
+  // กลไก “ช่วงผิดปกติ” (rare burst) — เกิดน้อยมาก 0.1% ของเวลา
+  let burstLeft = 0; // นับถอยหลังจำนวนสเต็ปที่ยังผิดปกติอยู่
 
-    // คลื่นประกอบ: ซี่เร็ว (3 นาที), สามเหลี่ยม (10 นาที), กลางวัน/กลางคืน (24 ชม.)
-    const saw = ((t % 36) / 36) * 2 - 1;            // ~3 นาที
-    const tri = Math.abs(((t % 120) / 60) - 1);     // ~10 นาที, 0..1..0
-    const day = Math.sin((2 * Math.PI * t) / stepsPerDay); // 24 ชม.
+  for (let i = 0; i < 24 * 60 * 60; i += 5) {
+    const t = (i + seedShift) / 5;       // หนึ่งสเต็ป = 5 วินาที
 
-   // Qty — ลด baseline ลงเล็กน้อย และให้หายใจตามวันน้อยลงนิดนึง
-    q = CFG.qty.mean
-    + CFG.qty.walk * (q - CFG.qty.mean)
-    + gauss(0, CFG.qty.noise)
-    + spike(CFG.qty.spikeP, CFG.qty.spikeAmp)
-    + 0.70 * saw
-    + 0.35 * (tri - 0.5)
-    + 0.45 * day;        // เดิม 0.60 → ลดลงให้ภาพรวมต่ำลง
+    // คลื่นสั้น/กลางเท่านั้น (ไม่มี day/night)
+    const saw = ((t % 36) / 36) * 2 - 1;            // ~3 นาที คลื่นฟันเลื่อย [-1..1]
+    const tri = Math.abs(((t % 120) / 60) - 1);     // ~10 นาที สามเหลี่ยม [0..1..0]
 
+    // โอกาสเริ่มระยะ “ผิดปกติ” ต่ำมาก (ประมาณ 0.1%)
+    if (burstLeft <= 0 && Math.random() < 0.001) {
+      // ความยาวช่วงผิดปกติ 2–8 นาที (นับเป็นสเต็ป 5 วิ)
+      const secs = 120 + Math.floor(Math.random() * 360); // 120..480 วินาที
+      burstLeft = Math.ceil(secs / 5);
+    }
 
-    // Pressure — กลางๆ แต่เห็นชัด
+    // ----------------- อัปเดตค่าหลัก (ไม่มี day term) -----------------
+
+    // Qty — ให้แกว่ง “น้อยลง” (ไม่มี day) ด้วยคลื่นสั้น/กลาง + noise + spike
+    q  = CFG.qty.mean
+        + CFG.qty.walk * (q - CFG.qty.mean)
+        + gauss(0, CFG.qty.noise)
+        + spike(CFG.qty.spikeP, CFG.qty.spikeAmp)
+        + 0.65 * saw + 0.30 * (tri - 0.5);
+
+    // Pressure — กลาง ๆ แต่ชัดขึ้น
     pr = CFG.pressure.mean
         + CFG.pressure.walk * (pr - CFG.pressure.mean)
         + gauss(0, CFG.pressure.noise)
         + spike(CFG.pressure.spikeP, CFG.pressure.spikeAmp)
-        + 0.55 * saw + 0.28 * (tri - 0.5) + 0.60 * day;
+        + 0.65 * saw + 0.35 * (tri - 0.5);
 
-    // Humidity — “แรงมากที่สุด” ตามที่ขอ
+    // Humidity — ผันผวนแรงสุดตามที่ต้องการ
     hm = CFG.humidity.mean
         + CFG.humidity.walk * (hm - CFG.humidity.mean)
         + gauss(0, CFG.humidity.noise)
         + spike(CFG.humidity.spikeP, CFG.humidity.spikeAmp)
-        + 1.20 * saw + 1.80 * (tri - 0.5) + 2.20 * day;
+        + 1.80 * saw + 2.20 * (tri - 0.5);
 
-   // Temperature — ทำให้สวิงแรงขึ้น (ทั้งระยะสั้นและกลางวัน/กลางคืน)
+    // Temperature — กว้างขึ้นจาก tri (แต่ไม่มี day)
     tp = CFG.temp.mean
-    + CFG.temp.walk * (tp - CFG.temp.mean)
-    + gauss(0, CFG.temp.noise)
-    + spike(CFG.temp.spikeP, CFG.temp.spikeAmp)
-    + 0.25 * saw         // เพิ่มคลื่นสั้นเล็กน้อย
-    + 0.65 * (tri - 0.5) // เดิม 0.35 → เพิ่มความสวิงช่วง 10 นาที
-    + 1.60 * day;        // เดิม 0.90 → เพิ่ม day/night ให้ชัดขึ้น
+        + CFG.temp.walk * (tp - CFG.temp.mean)
+        + gauss(0, CFG.temp.noise)
+        + spike(CFG.temp.spikeP, CFG.temp.spikeAmp)
+        + 0.65 * (tri - 0.5);
 
-    // CO2 — ขยับเล็กน้อย
+    // CO2 — เล็กน้อยพอเห็น
     c2 = CFG.co2.mean
         + CFG.co2.walk * (c2 - CFG.co2.mean)
         + gauss(0, CFG.co2.noise)
         + spike(CFG.co2.spikeP, CFG.co2.spikeAmp)
-        + 0.006 * saw + 0.01 * day;
+        + 0.010 * saw;
 
-    // H2S — มากขึ้นเล็กน้อย
+    // H2S — ขยับปานกลาง
     h2 = CFG.h2s.mean
         + CFG.h2s.walk * (h2 - CFG.h2s.mean)
         + gauss(0, CFG.h2s.noise)
         + spike(CFG.h2s.spikeP, CFG.h2s.spikeAmp)
-        + 0.18 * (tri - 0.5) + 0.35 * day;
+        + 0.25 * (tri - 0.5);
 
-    // Water — เพิ่มเล็กน้อย
+    // Water — ผันผวนน้อย (ตามที่กำหนดให้ต่ำกว่าอย่างอื่น)
     wt = CFG.water.mean
         + CFG.water.walk * (wt - CFG.water.mean)
         + gauss(0, CFG.water.noise)
         + spike(CFG.water.spikeP, CFG.water.spikeAmp)
-        + 0.03 * saw + 0.08 * day;
+        + 0.018 * saw + 0.020 * (tri - 0.5);
 
+    // ----------------- ปรับช่วงผิดปกติเล็กน้อย (ถ้ามี) -----------------
+    if (burstLeft > 0) {
+      // ความผิดปกติเล็กน้อย: เพิ่ม/ลดพอให้เห็นต่าง แต่ยังอยู่ในกรอบ clamp
+      hm += gauss(0, 3.5) + 6.0;                 // ความชื้นพุ่งขึ้นเด่น
+      pr += (Math.random() < 0.5 ? -1.8 : 1.8);  // ความดันแกว่งขึ้น/ลงชัดเจน
+      h2 += gauss(0, 0.35) + 0.7;
+      tp += gauss(0, 0.35) + 0.6;
+      q  += gauss(0, 0.4) - 0.8;                 // ปริมาณตกลงเล็กน้อย
+      wt += gauss(0, 0.004) + 0.008;
+
+      burstLeft -= 1;
+    }
+
+    // ส่งค่า (ถูก clamp และปัดทศนิยม 3 ตำแหน่ง)
     yield {
-        Quantity:    r3(clamp(q,  CFG.qty.lo,      CFG.qty.hi)),
-        Pressure:    r3(clamp(pr, CFG.pressure.lo, CFG.pressure.hi)),
-        Temperature: r3(clamp(tp, CFG.temp.lo,     CFG.temp.hi)),
-        Humidity:    r3(clamp(hm, CFG.humidity.lo, CFG.humidity.hi)),
-        CO2:         r3(clamp(c2, CFG.co2.lo,      CFG.co2.hi)),
-        H2S:         r3(clamp(h2, CFG.h2s.lo,      CFG.h2s.hi)),
-        Water:       r3(clamp(wt, CFG.water.lo,    CFG.water.hi)),
-        ProductStatus: 'normal',
+      Quantity:    r3(clamp(q,  CFG.qty.lo,      CFG.qty.hi)),
+      Pressure:    r3(clamp(pr, CFG.pressure.lo, CFG.pressure.hi)),
+      Temperature: r3(clamp(tp, CFG.temp.lo,     CFG.temp.hi)),
+      Humidity:    r3(clamp(hm, CFG.humidity.lo, CFG.humidity.hi)),
+      CO2:         r3(clamp(c2, CFG.co2.lo,      CFG.co2.hi)),
+      H2S:         r3(clamp(h2, CFG.h2s.lo,      CFG.h2s.hi)),
+      Water:       r3(clamp(wt, CFG.water.lo,    CFG.water.hi)),
+      ProductStatus: 'normal',
     };
-}
+  }
 }
 
 /* ============== Public page ============== */
