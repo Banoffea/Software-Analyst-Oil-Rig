@@ -184,7 +184,7 @@ async function resolveContext(payload) {
         [out.reading_id, out.rig_id]
       );
       if (!r) throw new Error('reading_id not found for this rig');
-      out.lot_id = r.lot_id ?? out.lot_id;
+      out.lot_id = r.lot_id ?? out.lot_id;  
       out.anchor_time = r.recorded_at;
       return out;
     }

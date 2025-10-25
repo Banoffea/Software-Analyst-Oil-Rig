@@ -69,7 +69,7 @@ function AddVesselModal({ open, onClose, onCreated }) {
 
         <label className="block">
           <div className="muted text-xs mb-1">Vessel name</div>
-          <input ref={first} className="input w-full" value={name} onChange={e=>setName(e.target.value)} />
+          <input ref={first} className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
         </label>
 
         <div className="grid md:grid-cols-2 gap-3 mt-3">
