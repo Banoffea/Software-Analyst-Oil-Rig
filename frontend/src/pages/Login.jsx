@@ -5,18 +5,36 @@ import logo from '../assets/company_logo.png';
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [err, setErr] = useState('');
+  const [fieldError, setFieldError] = useState('');   // ข้อความเล็กใต้ช่องรหัสผ่าน
   const userRef = useRef(null);
 
   useEffect(() => { userRef.current?.focus(); }, []);
 
   const submit = async (e) => {
     e.preventDefault();
-    setErr('');
+    setFieldError('');
+
+    // AF1: ตรวจว่ากรอกครบหรือยัง
+    if (!username.trim() || !password.trim()) {
+      setFieldError('Please fill in all information.');
+      return;
+    }
+
     try {
       await onLogin(username, password);
     } catch (error) {
-      setErr(error?.response?.data?.message || 'Login failed');
+      // AF2: ไม่พบบัญชี / ชื่อผู้ใช้ผิด / รหัสผ่านผิด
+      const httpStatus = error?.response?.status;
+      const serverMsg = String(error?.response?.data?.message || '').toLowerCase();
+      if (
+        httpStatus === 401 ||
+        /invalid|incorrect|not\s*found|unauthorized|wrong/i.test(serverMsg)
+      ) {
+        setFieldError('Incorrect username or password');
+      } else {
+        // เผื่อกรณีอื่น ๆ
+        setFieldError('Login failed');
+      }
     }
   };
 
@@ -24,13 +42,8 @@ export default function Login({ onLogin }) {
     <div className="login-shell">
       {/* Top bar */}
       <header className="site-header">
-        <div className="container" >
-          <img
-            src={logo}
-            alt="Logo"
-            width='auto'
-            height="43"
-          />
+        <div className="container">
+          <img src={logo} alt="Logo" width="auto" height="43" />
           <div className="brand">OffshoreManagingDashboards</div>
         </div>
       </header>
@@ -55,7 +68,7 @@ export default function Login({ onLogin }) {
                 </span>
                 <input
                   ref={userRef}
-                  className="input pl-40" /* see CSS note about pl-40 */
+                  className="input pl-40"
                   placeholder="Username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -82,14 +95,23 @@ export default function Login({ onLogin }) {
                   autoComplete="current-password"
                 />
               </div>
+
+              {/* ข้อความแจ้งเตือนเล็กใต้ช่องรหัสผ่าน */}
+              {fieldError && (
+                <div
+                  className="text-xs"
+                  style={{ color: '#ef4444', marginTop: '6px' , textAlign: 'right'}}
+                  role="alert"
+                >
+                  {fieldError}
+                </div>
+              )}
             </label>
 
             <button type="submit" className="btn btn-primary btn-lg w-full">
               Login
             </button>
           </form>
-
-          {err && <div className="login-error text-sm">{err}</div>}
         </div>
       </main>
     </div>
