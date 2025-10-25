@@ -139,22 +139,33 @@ function UserModal({ row, onClose, onSaved }) {
     setBusy(true);
     try {
       if (row) {
+        // EDIT: allow changing username too
+        const nextUsername = username.trim();
+        if (!nextUsername) {
+          alert('username required');
+          setBusy(false);
+          return;
+        }
         const payload = {
-          display_name: displayName,
+          username: nextUsername,           // <-- send new username
+          display_name: (displayName || nextUsername).trim(),
           role,
         };
         if (password) payload.password = password; // only change when provided
         await updateUser(row.id, payload);
       } else {
-        if (!username.trim() || !password.trim()) {
+        // CREATE
+        const nextUsername = username.trim();
+        const nextPassword = password.trim();
+        if (!nextUsername || !nextPassword) {
           alert('username & password required');
           setBusy(false);
           return;
         }
         await createUser({
-          username: username.trim(),
-          password: password.trim(),
-          display_name: (displayName || username).trim(),
+          username: nextUsername,
+          password: nextPassword,
+          display_name: (displayName || nextUsername).trim(),
           role,
         });
       }
@@ -184,7 +195,6 @@ function UserModal({ row, onClose, onSaved }) {
                 className="input w-full"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                disabled={!!row}
                 required
               />
             </label>

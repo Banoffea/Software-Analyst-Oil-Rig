@@ -129,6 +129,7 @@ export default function OilDashboard() {
           <table className="table">
             <thead>
               <tr>
+                <th style={{ width: 110 }}>Lot ID</th>
                 <th>Lot date</th>
                 <th>Status</th>
                 <th>Total qty</th>
@@ -145,6 +146,7 @@ export default function OilDashboard() {
                   tabIndex={0}
                   onKeyDown={(e) => e.key === 'Enter' && setViewLot(l)}
                 >
+                  <td className="font-mono">#{l.id}</td>
                   <td>{l.lot_date}</td>
                   <td>{l.status}</td>
                   <td>{Number(l.total_qty || 0).toLocaleString()}</td>
@@ -169,7 +171,7 @@ export default function OilDashboard() {
               ))}
               {!lots.length && (
                 <tr>
-                  <td colSpan={4} className="muted">
+                  <td colSpan={5} className="muted">
                     No lots
                   </td>
                 </tr>

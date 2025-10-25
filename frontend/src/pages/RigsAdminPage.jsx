@@ -1,5 +1,5 @@
 // frontend/src/pages/RigsAdminPage.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { listRigs, createRig, updateRig, deleteRig } from '../api/rigs';
 import { useAuth } from '../utils/auth.jsx';
 
@@ -8,6 +8,9 @@ const STATUSES = ['online','offline','maintenance'];
 export default function RigsAdminPage() {
   const { me } = useAuth();
   const isAdmin = me?.role === 'admin';
+  const isProduction = me?.role === 'production';
+  const canChangeStatus = isProduction;
+
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
@@ -30,9 +33,10 @@ export default function RigsAdminPage() {
     return c;
   }, [rows]);
 
-  const visible = rows; // กรองฝั่ง server แล้ว
+  const visible = rows; // server filtered already
 
   const changeStatus = async (row, s) => {
+    if (!canChangeStatus) return; // guard
     if (row.status === s) return;
     const prev = row.status;
     setRows(rs => rs.map(x => x.id===row.id ? { ...x, status:s, __saving:true } : x));
@@ -51,7 +55,7 @@ export default function RigsAdminPage() {
         <h1 className="page-title">Rigs</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          {isAdmin && (  /* <-- show only for admin */
+          {isAdmin && (
             <button
               className="btn btn-primary"
               onClick={()=>{ setEditRow(null); setShowModal(true); }}
@@ -89,58 +93,55 @@ export default function RigsAdminPage() {
         <div className="table-wrap">
           <table className="table">
             <thead>
-            <tr>
-              <th style={{width:80}}>ID</th>
-              <th style={{width:140}}>Rig code</th>
-              <th>Name</th>
-              <th>Location</th>
-              <th style={{width:120}}>Lat</th>
-              <th style={{width:120}}>Lon</th>
-              <th style={{width:120}}>Capacity</th>
-              <th style={{width:160}}>Status</th>
-              <th style={{width:200}} className="text-right">Actions</th>
-            </tr>
+              <tr>
+                <th style={{width:80}}>ID</th>
+                <th style={{width:140}}>Rig code</th>
+                <th>Name</th>
+                <th>Location</th>
+                <th style={{width:120}}>Lat</th>
+                <th style={{width:120}}>Lon</th>
+                <th style={{width:120}}>Capacity</th>
+                <th style={{width:200}}>Status</th>
+                {isAdmin && <th style={{width:200}} className="text-right">Actions</th>}
+              </tr>
             </thead>
             <tbody>
-            {loading && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
-            {!loading && !visible.length && <tr><td colSpan={9} className="muted">No rigs</td></tr>}
-            {!loading && visible.map(r => (
-              <tr key={r.id}>
-                <td>#{r.id}</td>
-                <td className="font-mono">{r.rig_code}</td>
-                <td>{r.name}</td>
-                <td className="muted">{r.location || '-'}</td>
-                <td className="muted">{r.lat ?? '-'}</td>
-                <td className="muted">{r.lon ?? '-'}</td>
-                <td className="muted">{r.capacity ?? '-'}</td>
-                <td onClick={e=>e.stopPropagation()}>
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="select"
+              {loading && <tr><td colSpan={isAdmin?9:8} className="muted">Loading…</td></tr>}
+              {!loading && !visible.length && <tr><td colSpan={isAdmin?9:8} className="muted">No rigs</td></tr>}
+              {!loading && visible.map(r => (
+                <tr key={r.id}>
+                  <td>#{r.id}</td>
+                  <td className="font-mono">{r.rig_code}</td>
+                  <td>{r.name}</td>
+                  <td className="muted">{r.location || '-'}</td>
+                  <td className="muted">{r.lat ?? '-'}</td>
+                  <td className="muted">{r.lon ?? '-'}</td>
+                  <td className="muted">{r.capacity ?? '-'}</td>
+                  <td onClick={e=>e.stopPropagation()}>
+                    <StatusCell
                       value={r.status}
-                      onChange={e=>changeStatus(r, e.target.value)}
-                      disabled={r.__saving}
-                    >
-                      {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    {r.__saving && <span className="muted text-xs">Saving…</span>}
-                  </div>
-                </td>
-                <td className="text-right">
-                  <div className="inline-flex gap-2">
-                    <button className="btn btn-ghost" onClick={()=>{ setEditRow(r); setShowModal(true); }}>Edit</button>
-                    <button
-                      className="btn btn-ghost"
-                      onClick={async ()=>{
-                        if (!confirm(`Delete rig ${r.rig_code}?`)) return;
-                        await deleteRig(r.id);
-                        load();
-                      }}
-                    >Delete</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      saving={r.__saving}
+                      canEdit={canChangeStatus}
+                      onChange={(s)=>changeStatus(r, s)}
+                    />
+                  </td>
+                  {isAdmin && (
+                    <td className="text-right">
+                      <div className="inline-flex gap-2">
+                        <button className="btn btn-ghost" onClick={()=>{ setEditRow(r); setShowModal(true); }}>Edit</button>
+                        <button
+                          className="btn btn-ghost"
+                          onClick={async ()=>{
+                            if (!confirm(`Delete rig ${r.rig_code}?`)) return;
+                            await deleteRig(r.id);
+                            load();
+                          }}
+                        >Delete</button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -153,9 +154,81 @@ export default function RigsAdminPage() {
           onSaved={()=>{ setShowModal(false); load(); }}
         />
       }
+
+      {/* local styles for status dot */}
+      <style>{`
+        .status-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#0b1220; border:1px solid #334155; cursor:default; }
+        .status-pill.editable { cursor:pointer; }
+        .dot { width:10px; height:10px; border-radius:999px; }
+        .dot.online { background:#10b981; }
+        .dot.offline { background:#ef4444; }
+        .dot.maintenance { background:#f59e0b; }
+        .status-menu { position:absolute; z-index:40; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:6px; box-shadow:0 12px 30px rgba(0,0,0,.35); }
+        .status-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; }
+        .status-item:hover { background:#111827; }
+      `}</style>
     </div>
   );
 }
+
+function StatusCell({ value, saving, canEdit, onChange }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef(null);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (!anchorRef.current) return;
+      if (!anchorRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const pill = (
+    <div
+      ref={anchorRef}
+      className={`status-pill ${canEdit ? 'editable' : ''}`}
+      onClick={() => canEdit && setOpen(v => !v)}
+      title={canEdit ? 'Click to change' : ''}
+      role={canEdit ? 'button' : undefined}
+      tabIndex={canEdit ? 0 : -1}
+      aria-haspopup={canEdit ? 'menu' : undefined}
+      aria-expanded={canEdit ? open : undefined}
+      onKeyDown={(e)=>{ if (canEdit && (e.key==='Enter'||e.key===' ')) setOpen(v=>!v); }}
+    >
+      <span className={`dot ${value}`} />
+      <span style={{ textTransform:'capitalize' }}>{value}</span>
+      {canEdit && (
+        <span className={`caret ${open ? 'up' : ''}`} aria-hidden="true">▾</span>
+      )}
+      {saving && <span className="muted text-xs" style={{marginLeft:6}}>Saving…</span>}
+    </div>
+  );
+
+  if (!canEdit) return pill;
+
+  return (
+    <div style={{ position:'relative', display:'inline-block' }}>
+      {pill}
+      {open && (
+        <div className="status-menu" style={{ top:'110%', left:0 }}>
+          {STATUSES.map(s => (
+            <div
+              key={s}
+              className="status-item"
+              role="menuitem"
+              onClick={() => { setOpen(false); if (s!==value) onChange?.(s); }}
+            >
+              <span className={`dot ${s}`} />
+              <span style={{ textTransform:'capitalize' }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function RigModal({ row, onClose, onSaved }) {
   const [rig_code, setRigCode] = useState(row?.rig_code || '');
@@ -220,7 +293,7 @@ function RigModal({ row, onClose, onSaved }) {
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy}>{row ? 'Adding…' : 'Add'}</button>
+            <button className="btn btn-primary" disabled={busy}>{row ? 'Saving…' : 'Add'}</button>
           </div>
         </form>
       </div>

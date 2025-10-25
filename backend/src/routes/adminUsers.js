@@ -77,22 +77,44 @@ router.post('/', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const { username, display_name, role, password } = req.body || {};
     const sets = [];
     const vals = [];
 
-    if (req.body.display_name !== undefined) {
-      sets.push('display_name=?'); vals.push(req.body.display_name || '');
-    }
-    if (req.body.role !== undefined) {
-      sets.push('role=?'); vals.push(normalizeRole(req.body.role));
-    }
-    if (req.body.password !== undefined && req.body.password !== '') {
-      sets.push('password=?'); vals.push(req.body.password);
-    }
-    if (!sets.length) return res.json({ ok: true });
+    // อัปเดต username (ถ้าส่งมา) + ตรวจชื่อซ้ำ (ยกเว้น user เดิมเอง)
+    if (username !== undefined) {
+      const uname = String(username).trim();
+      if (!uname) return res.status(400).json({ message: 'username required' });
 
+      const [dup] = await db.query(
+        'SELECT id FROM users WHERE username = ? AND id <> ? LIMIT 1',
+        [uname, id]
+      );
+      if (dup.length) {
+        return res.status(409).json({ message: 'username already exists' });
+      }
+
+      sets.push('username=?'); vals.push(uname);
+    }
+
+    if (display_name !== undefined) {
+      sets.push('display_name=?'); vals.push(display_name || '');
+    }
+
+    if (role !== undefined) {
+      sets.push('role=?'); vals.push(normalizeRole(role));
+    }
+
+    if (password !== undefined && password !== '') {
+      sets.push('password=?'); vals.push(password);
+    }
+
+    if (!sets.length) return res.json({ ok: true }); // ไม่มีอะไรให้แก้
+
+    sets.push('updated_at=NOW()');
     vals.push(id);
-    await db.query(`UPDATE users SET ${sets.join(', ')}, updated_at=NOW() WHERE id=?`, vals);
+
+    await db.query(`UPDATE users SET ${sets.join(', ')} WHERE id=?`, vals);
 
     const [row] = await db.query(
       'SELECT id, username, display_name, role, created_at FROM users WHERE id=?',
@@ -104,6 +126,7 @@ router.patch('/:id', async (req, res) => {
     res.status(400).json({ message: err.message || 'update failed' });
   }
 });
+
 
 // DELETE /api/admin/users/:id
 router.delete('/:id', async (req, res) => {
