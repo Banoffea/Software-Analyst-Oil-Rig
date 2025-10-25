@@ -188,27 +188,27 @@ function RigModal({ row, onClose, onSaved }) {
           <div className="grid md:grid-cols-2 gap-3">
             <label className="block">
               <div className="muted text-xs mb-1">Rig code</div>
-              <input className="input w-full" value={rig_code} onChange={e=>setRigCode(e.target.value)} required disabled={!!row}/>
+              <input className="input w-full" value={rig_code} onChange={e=>setRigCode(e.target.value)} required disabled={!!row} onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Name</div>
-              <input className="input w-full" value={name} onChange={e=>setName(e.target.value)} required />
+              <input className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block md:col-span-2">
               <div className="muted text-xs mb-1">Location</div>
-              <input className="input w-full" value={location} onChange={e=>setLocation(e.target.value)} />
+              <input className="input w-full" value={location} onChange={e=>setLocation(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Lat</div>
-              <input className="input w-full" value={lat} onChange={e=>setLat(e.target.value)} />
+              <input className="input w-full" value={lat} onChange={e=>setLat(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Lon</div>
-              <input className="input w-full" value={lon} onChange={e=>setLon(e.target.value)} />
+              <input className="input w-full" value={lon} onChange={e=>setLon(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Capacity</div>
-              <input className="input w-full" value={capacity} onChange={e=>setCapacity(e.target.value)} />
+              <input className="input w-full" value={capacity} onChange={e=>setCapacity(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Status</div>
@@ -220,7 +220,7 @@ function RigModal({ row, onClose, onSaved }) {
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy}>{row ? 'Adding…' : 'Add'}</button>
+            <button className="btn btn-primary" disabled={busy}>{row ? 'Save' : 'Add'}</button>
           </div>
         </form>
       </div>

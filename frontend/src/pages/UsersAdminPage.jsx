@@ -40,7 +40,7 @@ export default function UsersAdminPage() {
         <h1 className="page-title">User Management</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add user</button>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>Create User</button>
         </div>
       </div>
 
@@ -186,6 +186,8 @@ function UserModal({ row, onClose, onSaved }) {
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={!!row}
                 required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
@@ -195,6 +197,9 @@ function UserModal({ row, onClose, onSaved }) {
                 className="input w-full"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
@@ -219,6 +224,8 @@ function UserModal({ row, onClose, onSaved }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required={!row}
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
           </div>
