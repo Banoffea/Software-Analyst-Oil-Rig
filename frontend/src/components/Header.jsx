@@ -38,14 +38,14 @@ export default function Header({ onLogout }) {
           {!loading && can('product') && (
             <NavLink to="/product" className={linkClass}>Product</NavLink>
           )}
+          {!loading && can('rigs') && (
+            <NavLink to="/admin/rigs" className={linkClass}>Rigs</NavLink>
+          )}
           {!loading && can('vessels') && (
             <NavLink to="/vessels" className={linkClass}>Vessels</NavLink>
           )}
           {!loading && can('reports') && (
             <NavLink to="/issues" className={linkClass}>Reports</NavLink>
-          )}
-          {!loading && can('rigs') && (
-            <NavLink to="/admin/rigs" className={linkClass}>Rigs</NavLink>
           )}
           {!loading && can('users') && (
             <NavLink to="/admin/users" className={linkClass}>User Management</NavLink>

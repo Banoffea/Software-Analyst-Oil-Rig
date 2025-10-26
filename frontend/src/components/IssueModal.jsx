@@ -203,7 +203,6 @@ export default function IssueModal({
       <div className="imodal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="imodal-head">
           <h3>Report an issue</h3>
-          <button className="x" onClick={() => !busy && onClose?.(false)} aria-label="Close">×</button>
         </div>
 
         <form onSubmit={submit} className="imodal-body">
@@ -266,7 +265,7 @@ export default function IssueModal({
             <div className="row">
               <input
                 type="datetime-local"
-                className="in"
+                className="input-datetime in"
                 value={anchorAt}
                 onChange={(e) => setAnchorAt(e.target.value)}
               />
@@ -439,22 +438,24 @@ export default function IssueModal({
 
 const CSS = `
 .imodal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:50}
-.imodal{width:min(620px,92vw);background:#fff;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden}
-.imodal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #eef0f3}
+.imodal{width:min(620px,92vw);background:#18232F;border-radius:14px;box-shadow:0 18px 60px rgba(0,0,0,.25);overflow:hidden}
+.imodal-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:3px solid #111A22}
 .imodal-head h3{margin:0;font-size:18px}
 .imodal-body{padding:14px 16px;display:grid;gap:12px}
 .x{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer}
 .f{display:flex;flex-direction:column;gap:6px}
-.in{border:1px solid #d1d5db;border-radius:10px;padding:10px 12px;width:100%}
-.in.error{border-color:#ef4444}
+.imodal .in{background:#111A22;color:#FFFFFF;border:1px solid #111A22;border-radius:10px;padding:10px 12px;width:100%}
+.imodal .in.error{border-color:#ef4444}
 .err{color:#dc2626;font-size:12px;margin-top:4px}
-.row{display:flex;gap:8px;align-items:center}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.btn{padding:9px 14px;border:1px solid #d1d5db;background:#fff;border-radius:999px;cursor:pointer}
-.btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.btn.ghost{background:#f9fafb}
-.chip{display:inline-flex;align-items:center;gap:8px;background:#111827;color:#fff;border-radius:999px;padding:7px 12px}
-.foot{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.imodal .row{display:flex;gap:8px;align-items:center}
+.imodal .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.imodal .btn{padding:9px 14px;border:1px solid #334155;background:#111A22;color:#fff;border-radius:999px;cursor:pointer}
+.imodal .btn:hover{background:#23313d}
+.imodal .btn.primary{background:#138AEC;border-color:#138AEC;color:#fff}
+.imodal .btn.primary:hover{background:#1e5fe6;}
+.imodal .btn.ghost{background:#fff;color:black}
+.imodal .chip{display:inline-flex;align-items:center;gap:8px;background:#111A22;color:#fff;border:none;border-radius:10px;padding:7px 12px}
+.imodal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 @media (max-width:560px){ .grid2{grid-template-columns:1fr} }
 
 /* ===== Blank page style for admin ===== */

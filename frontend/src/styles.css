@@ -31,7 +31,7 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 
 /* Buttons */
 .btn { border: 1px solid var(--line); background: var(--card); padding: 8px 12px; border-radius: 10px; cursor: pointer;}
-.btn:hover { background: var(--field); }
+.btn:hover { background: var(--field); color: var(--text) }
 .btn-primary { border: none; background: var(--brand); color: var(--text); }
 .btn-primary:hover { background: var(--brand-600); }
 .btn-outline { background: transparent; color: var(--muted); border: none; }
@@ -238,6 +238,32 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
   margin: 0;                /* เก็บระยะให้ฟิตใน 410px */
 }
 
+/** DateTimeLocal Icon **/
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0; /* ซ่อนไอคอนเดิม */
+  position: absolute;
+  right: 10px;
+  cursor: pointer;
+}
+
+.input-datetime {
+  position: relative;
+  padding-right: 30px; /* เผื่อที่ให้ไอคอนใหม่ */
+}
+
+.input-datetime::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  background: url("data:image/svg+xml;utf8,<svg fill='%23FFFFFF' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M7 10h5v5H7z'/><path d='M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2zm0 16H5V9h14v11z'/></svg>")
+    no-repeat center center;
+  pointer-events: none; /* ให้คลิกทะลุไปถึง input ได้ */
+}
+
 /** Logout **/
 
 .logout-btn{
@@ -268,5 +294,3 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 <path d='M21 12H9'/>\
 </svg>") center / contain no-repeat;
 }
-
-
