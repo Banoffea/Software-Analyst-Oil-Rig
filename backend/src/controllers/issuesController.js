@@ -6,7 +6,7 @@ const VALID_STATUSES = [
   'in_progress',
   'need_rework',
   'awaiting_fleet_approval',
-  'awaiting_manage_approval',
+  'awaiting_manager_approval',
   'approved',
 ];
 
@@ -335,7 +335,7 @@ exports.update = async (req, res) => {
 
 // helper
 function nextStatusAfterSubmit(type){
-  return (type === 'oil' || type === 'lot') ? 'awaiting_manage_approval' : 'awaiting_fleet_approval';
+  return (type === 'oil' || type === 'lot') ? 'awaiting_manager_approval' : 'awaiting_fleet_approval';
 }
 
 // =============== Submit report (stores photos in DB) ===============
@@ -406,12 +406,12 @@ exports.approveIssue = async (req, res) => {
     if (role !== 'fleet') {
       return res.status(403).json({ message: 'Only fleet can approve here' });
     }
-    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?', ['awaiting_manage_approval', id]);
-    return res.json({ ok: true, status: 'awaiting_manage_approval' });
+    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?', ['awaiting_manager_approval', id]);
+    return res.json({ ok: true, status: 'awaiting_manager_approval' });
   }
 
   // Final: manager only (admin/captain/fleet blocked)
-  if (row.status === 'awaiting_manage_approval') {
+  if (row.status === 'awaiting_manager_approval') {
     if (role !== 'manager') {
       return res.status(403).json({ message: 'Only manager can approve here' });
     }
@@ -435,7 +435,7 @@ exports.rejectIssue = async (req, res) => {
   const [[row]] = await db.query('SELECT id, status FROM issues WHERE id=?', [id]);
   if (!row) return res.status(404).json({ message: 'Not found' });
 
-  if (row.status === 'awaiting_manage_approval') {
+  if (row.status === 'awaiting_manager_approval') {
     if (role !== 'manager') return res.status(403).json({ message: 'Only manager can reject here' });
   } else if (row.status === 'awaiting_fleet_approval') {
     if (role !== 'fleet') return res.status(403).json({ message: 'Only fleet can reject here' });
