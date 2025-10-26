@@ -1,4 +1,3 @@
-// frontend/src/api/issues.js
 import api from './apiClient'; // ← keep consistent with the rest of your app
 
 // CRUD
@@ -22,6 +21,11 @@ export async function updateIssue(id, payload) {
   return data;
 }
 
+export async function deleteIssue(id) {
+  const { data } = await api.delete(`/issues/${id}`);
+  return data;
+}
+
 // Work/submit flow
 export async function submitIssueReport(id, body) {
   // If caller passes a FormData already, send as-is.
@@ -41,7 +45,6 @@ export async function submitIssueReport(id, body) {
   let ft = body?.finish_time;
   if (ft) {
     if (typeof ft === 'string' && ft.includes('T')) {
-      // length 16 means no seconds
       ft = ft.replace('T', ' ') + (ft.length === 16 ? ':00' : '');
     }
     fd.append('finish_time', ft);

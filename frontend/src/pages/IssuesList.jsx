@@ -1,6 +1,5 @@
-// src/pages/IssuesList.jsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { listIssues, getIssue } from '../api/issues';
+import { listIssues, getIssue, deleteIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
 import IssueWorkModal from '../components/IssueWorkModal';
 
@@ -38,9 +37,9 @@ function SeverityBadge({ v }) {
 
 function StatusBadge({ v }) {
   const map = {
-    open:'#3b82f6',                              // legacy (still displayable)
+    open:'#3b82f6',                 // legacy
     in_progress:'#f59e0b',
-    waiting_approval:'#a855f7',                 // legacy (still displayable)
+    waiting_approval:'#a855f7',     // legacy
     need_rework:'#ef4444',
     approved:'#10b981',
     awaiting_manage_approval:'#2563eb',
@@ -88,7 +87,7 @@ const STATUS_FILTERS = [
 
 export default function IssuesList() {
   const { me } = useAuth();
-  const role = me?.role;
+  const role = me?.role; // ยังเก็บไว้ใช้ส่วนอื่นในอนาคต
 
   const [typeTab, setTypeTab] = useState('all');          // all | oil | lot | vessel | shipment
   const [status, setStatus]   = useState('all');          // all | <statuses>
@@ -100,7 +99,7 @@ export default function IssuesList() {
 
   const [workRow, setWorkRow] = useState(null);           // data for IssueWorkModal
 
-  // role-based visibility
+  // role-based visibility (คงเดิม)
   const allowedTypes = useMemo(() => {
     if (role === 'production') return ['oil','lot'];
     if (role === 'captain' || role === 'fleet') return ['vessel','shipment'];
@@ -161,6 +160,18 @@ export default function IssuesList() {
     }
   };
 
+  // ✅ ลบทุกรายการได้ทุก role (มี confirm และรีโหลด)
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Delete report #${row.id}?`)) return;
+    try {
+      await deleteIssue(row.id);
+      await load();
+    } catch (e) {
+      const msg = e?.response?.data?.message || 'Delete failed';
+      alert(msg);
+    }
+  };
+
   const TABS = ['all','oil','lot','vessel','shipment'];
 
   return (
@@ -169,7 +180,6 @@ export default function IssuesList() {
         <h1 className="page-title">Reports</h1>
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
-          {/* no create/report button here as requested */}
         </div>
       </div>
 
@@ -198,7 +208,7 @@ export default function IssuesList() {
             ))}
           </select>
 
-          {/* Status filter (legacy 'open' and 'waiting_approval' removed) */}
+          {/* Status filter */}
           <select
             className="select"
             value={status}
@@ -241,7 +251,7 @@ export default function IssuesList() {
                 <th style={{width:200}}>Status</th>
                 <th style={{width:170}}>Occurred</th>
                 <th style={{width:170}}>Created</th>
-                <th style={{width:140}} className="text-right">Actions</th>
+                <th style={{width:200}} className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -258,7 +268,11 @@ export default function IssuesList() {
                   <td className="muted">{fmt(r.anchor_time)}</td>
                   <td className="muted">{fmt(r.created_at)}</td>
                   <td className="text-right">
-                    <button className="btn btn-primary" onClick={() => openWork(r)}>Open</button>
+                    <div className="inline-flex gap-2">
+                      <button className="btn btn-primary" onClick={() => openWork(r)}>Open</button>
+                      {/* ✅ ปุ่มลบ แสดงทุก role */}
+                      <button className="btn btn-ghost" onClick={() => handleDelete(r)}>Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}

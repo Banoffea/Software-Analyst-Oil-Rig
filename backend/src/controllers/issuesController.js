@@ -453,4 +453,27 @@ exports.streamPhoto = async (req, res) => {
   return res.end(row.bytes);
 };
 
+exports.remove = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'invalid id' });
+
+    // มีไหม?
+    const [[exists]] = await db.query('SELECT id FROM issues WHERE id=? LIMIT 1', [id]);
+    if (!exists) return res.status(404).json({ message: 'not found' });
+
+    // ลบความเกี่ยวข้องต่าง ๆ ถ้ามี (ไม่ error ถ้าตารางไม่มี)
+    try { await db.query('DELETE FROM issue_photos WHERE issue_id=?', [id]); } catch {}
+    try { await db.query('DELETE FROM issue_actions WHERE issue_id=?', [id]); } catch {}
+
+    // ลบตัว issue
+    await db.query('DELETE FROM issues WHERE id=?', [id]);
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('[issues] delete error:', e);
+    return res.status(500).json({ message: 'failed to delete issue' });
+  }
+};
+
 module.exports = exports;

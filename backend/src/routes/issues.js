@@ -30,6 +30,7 @@ router.post('/:id/submit',   auth, upload.array('photos', 10), issues.submitRepo
 router.post('/:id/approve',  auth, issues.approveIssue);
 router.post('/:id/reject',   auth, issues.rejectIssue);
 
+router.delete('/:id',        auth, issues.remove);
 // stream photo bytes from DB
 router.get('/photo/:photoId', auth, issues.streamPhoto);
 
