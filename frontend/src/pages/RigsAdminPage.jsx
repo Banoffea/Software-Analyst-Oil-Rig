@@ -36,18 +36,24 @@ export default function RigsAdminPage() {
   const visible = rows; // server filtered already
 
   const changeStatus = async (row, s) => {
-    if (!canChangeStatus) return; // guard
-    if (row.status === s) return;
-    const prev = row.status;
-    setRows(rs => rs.map(x => x.id===row.id ? { ...x, status:s, __saving:true } : x));
-    try {
-      await updateRig(row.id, { status: s });
-      setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:false } : x));
-    } catch {
-      setRows(rs => rs.map(x => x.id===row.id ? { ...x, status:prev, __saving:false } : x));
-      alert('Update status failed');
-    }
-  };
+  if (!canChangeStatus) return;
+  if (row.status === s) return;
+
+  // แสดงกำลังบันทึก แต่ *ไม่* เปลี่ยนค่า status ล่วงหน้า
+  setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:true } : x));
+
+  try {
+    await updateRig(row.id, { status: s });
+    // ✅ ดึงข้อมูลจาก server มาคอนเฟิร์ม (กันค่า local เพี้ยน)
+    await load();
+  } catch (e) {
+    const msg = e?.response?.data?.message || 'Update status failed';
+    alert(msg);
+    // ยกเลิกสถานะ saving
+    setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:false } : x));
+  }
+};
+
 
   return (
     <div className="space-y-6">
@@ -173,23 +179,24 @@ export default function RigsAdminPage() {
 
 function StatusCell({ value, saving, canEdit, onChange }) {
   const [open, setOpen] = useState(false);
-  const anchorRef = useRef(null);
+  const wrapRef = useRef(null); // <-- เปลี่ยนเป็น wrapper ref
 
   useEffect(() => {
     const onDoc = (e) => {
-      if (!anchorRef.current) return;
-      if (!anchorRef.current.contains(e.target)) setOpen(false);
+      if (!wrapRef.current) return;
+      // ถ้าคลิกอยู่นอก wrapper (ที่ครอบ pill + menu) ค่อยปิด
+      if (!wrapRef.current.contains(e.target)) setOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    // จะใช้ 'click' หรือ 'mousedown' ก็ได้ แต่ 'click' ปลอดภัยกว่าในเคสนี้
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
   }, []);
 
   const pill = (
     <div
-      ref={anchorRef}
       className={`status-pill ${canEdit ? 'editable' : ''}`}
-      onClick={() => canEdit && setOpen(v => !v)}
-      title={canEdit ? 'Click to change' : ''}
+      onClick={() => canEdit && !saving && setOpen(v => !v)}
+      title={canEdit ? (saving ? 'Saving…' : 'Click to change') : ''}
       role={canEdit ? 'button' : undefined}
       tabIndex={canEdit ? 0 : -1}
       aria-haspopup={canEdit ? 'menu' : undefined}
@@ -198,9 +205,7 @@ function StatusCell({ value, saving, canEdit, onChange }) {
     >
       <span className={`dot ${value}`} />
       <span style={{ textTransform:'capitalize' }}>{value}</span>
-      {canEdit && (
-        <span className={`caret ${open ? 'up' : ''}`} aria-hidden="true">▾</span>
-      )}
+      {canEdit && <span className={`caret ${open ? 'up' : ''}`} aria-hidden="true">▾</span>}
       {saving && <span className="muted text-xs" style={{marginLeft:6}}>Saving…</span>}
     </div>
   );
@@ -208,11 +213,12 @@ function StatusCell({ value, saving, canEdit, onChange }) {
   if (!canEdit) return pill;
 
   return (
-    <div style={{ position:'relative', display:'inline-block' }}>
+    // ⬅️ ย้าย ref มาใส่ wrapper ที่ครอบทั้ง pill + menu
+    <div ref={wrapRef} style={{ position:'relative', display:'inline-block' }}>
       {pill}
-      {open && (
+      {open && !saving && (
         <div className="status-menu" style={{ top:'110%', left:0 }}>
-          {STATUSES.map(s => (
+          {['online','offline','maintenance'].map(s => (
             <div
               key={s}
               className="status-item"
@@ -228,6 +234,7 @@ function StatusCell({ value, saving, canEdit, onChange }) {
     </div>
   );
 }
+
 
 
 function RigModal({ row, onClose, onSaved }) {
