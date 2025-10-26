@@ -79,9 +79,9 @@ export default function OilDashboard() {
             });
             setIssueOpen(true);
           }}
-          className="btn btn-primary"
+          className="btn btn-primary-report-current "
         >
-          Report current oil issue
+          Report current reading issue
         </button>
       </div>
 

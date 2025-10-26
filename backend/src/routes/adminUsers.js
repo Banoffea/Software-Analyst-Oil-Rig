@@ -4,7 +4,7 @@ const db = require('../db');
 const router = express.Router();
 
 // ปรับตาม enum ของคุณ (จากรูปเห็นอย่างน้อยพวกนี้)
-const ALLOWED_ROLES = ['admin', 'manager', 'production', 'fleet'];
+const ALLOWED_ROLES = ['admin', 'manager', 'production', 'fleet', 'captain'];
 
 function normalizeRole(role) {
   if (!role) return 'production';
