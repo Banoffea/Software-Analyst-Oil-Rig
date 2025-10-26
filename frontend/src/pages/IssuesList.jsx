@@ -87,7 +87,7 @@ const STATUS_FILTERS = [
 
 export default function IssuesList() {
   const { me } = useAuth();
-  const role = me?.role; // ยังเก็บไว้ใช้ส่วนอื่นในอนาคต
+  const role = me?.role;
 
   const [typeTab, setTypeTab] = useState('all');          // all | oil | lot | vessel | shipment
   const [status, setStatus]   = useState('all');          // all | <statuses>
@@ -99,7 +99,7 @@ export default function IssuesList() {
 
   const [workRow, setWorkRow] = useState(null);           // data for IssueWorkModal
 
-  // role-based visibility (คงเดิม)
+  // role-based visibility
   const allowedTypes = useMemo(() => {
     if (role === 'production') return ['oil','lot'];
     if (role === 'captain' || role === 'fleet') return ['vessel','shipment'];
@@ -160,7 +160,7 @@ export default function IssuesList() {
     }
   };
 
-  // ✅ ลบทุกรายการได้ทุก role (มี confirm และรีโหลด)
+  // delete any issue (all roles)
   const handleDelete = async (row) => {
     if (!window.confirm(`Delete report #${row.id}?`)) return;
     try {
@@ -194,7 +194,7 @@ export default function IssuesList() {
             style={{ minWidth: 400, maxWidth: 600 }}
           />
 
-          {/* Type tab as a select (counts reflect role filter) */}
+          {/* Type tab as a select */}
           <select
             className="select"
             value={typeTab}
@@ -247,6 +247,7 @@ export default function IssuesList() {
                 <th style={{width:90}}>Type</th>
                 <th>Context</th>
                 <th>Title</th>
+                <th style={{width:180}}>Reported by</th>{/* ✅ new */}
                 <th style={{width:130}}>Severity</th>
                 <th style={{width:200}}>Status</th>
                 <th style={{width:170}}>Occurred</th>
@@ -255,14 +256,15 @@ export default function IssuesList() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
-              {!loading && !visible.length && <tr><td colSpan={9} className="muted">No issues found</td></tr>}
+              {loading && <tr><td colSpan={10} className="muted">Loading…</td></tr>}
+              {!loading && !visible.length && <tr><td colSpan={10} className="muted">No issues found</td></tr>}
               {!loading && visible.map(r => (
                 <tr key={r.id} className="hoverable">
                   <td>#{r.id}</td>
                   <td className="capitalize">{r.type}</td>
                   <td className="muted">{contextText(r)}</td>
                   <td>{r.title}</td>
+                  <td>{r.reported_by_name || (r.reported_by ? `User #${r.reported_by}` : '-')}</td>{/* ✅ new */}
                   <td><SeverityBadge v={r.severity} /></td>
                   <td><StatusBadge v={r.status} /></td>
                   <td className="muted">{fmt(r.anchor_time)}</td>
@@ -270,7 +272,6 @@ export default function IssuesList() {
                   <td className="text-right">
                     <div className="inline-flex gap-2">
                       <button className="btn btn-primary" onClick={() => openWork(r)}>Open</button>
-                      {/* ✅ ปุ่มลบ แสดงทุก role */}
                       <button className="btn btn-ghost" onClick={() => handleDelete(r)}>Delete</button>
                     </div>
                   </td>

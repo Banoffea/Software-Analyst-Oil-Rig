@@ -1,4 +1,3 @@
-// frontend/src/components/IssueWorkModal.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { submitIssueReport, approveIssue, rejectIssue } from '../api/issues';
 
@@ -144,6 +143,11 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
           <KV k="Start Date and Time :" v={fmtDT(row.anchor_time)} />
           <KV k="Type :" v={typeLabel} />
           <KV k="Severity :" v={row.severity} />
+          {/* ✅ Reported by */}
+          <KV
+            k="Reported by :"
+            v={row.reported_by_name || (row.reported_by ? `User #${row.reported_by}` : '-')}
+          />
 
           {/* Issue details as plain text */}
           <KV k="Issue Details :">
@@ -187,31 +191,14 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
 
               <div className="iwm-field">
                 <div className="iwm-label">Attach Photo(s) :</div>
-                <div
-                  className={`iwm-drop ${dragging ? 'drag' : ''}`}
-                  onDragOver={onDragOver}
-                  onDragLeave={onDragLeave}
+                <Uploader
+                  editable={editable}
+                  inputRef={inputRef}
+                  dragging={dragging}
+                  setDragging={setDragging}
+                  onPick={onPick}
                   onDrop={onDrop}
-                  onClick={()=> editable && inputRef.current?.click()}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e)=> (editable && (e.key==='Enter' || e.key===' ') && inputRef.current?.click())}
-                  aria-label="Upload a file or drag and drop"
-                >
-                  <div className="iwm-plus">＋</div>
-                  <div className="iwm-upload-title">Upload a File</div>
-                  <div className="iwm-or">or</div>
-                  <div className="iwm-dnd">Drag and Drop</div>
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    multiple
-                    accept="image/*"
-                    onChange={onPick}
-                    style={{display:'none'}}
-                    disabled={!editable}
-                  />
-                </div>
+                />
 
                 {previews.length > 0 && (
                   <div className="iwm-grid">
@@ -298,6 +285,39 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
 
         <style>{css}</style>
       </div>
+    </div>
+  );
+}
+
+function Uploader({ editable, inputRef, dragging, setDragging, onPick, onDrop }) {
+  const onDragOver = (e) => { if (editable) { e.preventDefault(); setDragging(true); } };
+  const onDragLeave = (e) => { if (editable) { e.preventDefault(); setDragging(false); } };
+
+  return (
+    <div
+      className={`iwm-drop ${dragging ? 'drag' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onClick={()=> editable && inputRef.current?.click()}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e)=> (editable && (e.key==='Enter' || e.key===' ') && inputRef.current?.click())}
+      aria-label="Upload a file or drag and drop"
+    >
+      <div className="iwm-plus">＋</div>
+      <div className="iwm-upload-title">Upload a File</div>
+      <div className="iwm-or">or</div>
+      <div className="iwm-dnd">Drag and Drop</div>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept="image/*"
+        onChange={onPick}
+        style={{display:'none'}}
+        disabled={!editable}
+      />
     </div>
   );
 }

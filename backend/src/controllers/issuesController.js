@@ -107,39 +107,42 @@ exports.list = async (req, res) => {
   // role filter
   const role = req.user?.role;
   if (role === 'production') {
-    where.push("(type IN ('oil','lot'))");
+    where.push("(i.type IN ('oil','lot'))");
   } else if (role === 'captain' || role === 'fleet') {
-    where.push("(type IN ('vessel','shipment'))");
+    where.push("(i.type IN ('vessel','shipment'))");
   }
   // admin/manager see all
 
-  if (type)         { where.push('type=?'); vals.push(type); }
-  if (rig_id)       { where.push('rig_id=?'); vals.push(rig_id); }
-  if (vessel_id)    { where.push('vessel_id=?'); vals.push(vessel_id); }
-  if (lot_id)       { where.push('lot_id=?'); vals.push(lot_id); }
-  if (shipment_id)  { where.push('shipment_id=?'); vals.push(shipment_id); }
-  if (status)       { where.push('status=?'); vals.push(status); }
-  if (severity)     { where.push('severity=?'); vals.push(severity); }
-  if (from)         { where.push('anchor_time >= ?'); vals.push(from); }
-  if (to)           { where.push('anchor_time < ?');  vals.push(to); }
+  if (type)         { where.push('i.type=?'); vals.push(type); }
+  if (rig_id)       { where.push('i.rig_id=?'); vals.push(rig_id); }
+  if (vessel_id)    { where.push('i.vessel_id=?'); vals.push(vessel_id); }
+  if (lot_id)       { where.push('i.lot_id=?'); vals.push(lot_id); }
+  if (shipment_id)  { where.push('i.shipment_id=?'); vals.push(shipment_id); }
+  if (status)       { where.push('i.status=?'); vals.push(status); }
+  if (severity)     { where.push('i.severity=?'); vals.push(severity); }
+  if (from)         { where.push('i.anchor_time >= ?'); vals.push(from); }
+  if (to)           { where.push('i.anchor_time < ?');  vals.push(to); }
 
   let sqlQ = '';
   if (q) {
     if (process.env.ISSUE_SEARCH_MODE === 'LIKE') {
-      sqlQ = ' AND (title LIKE ? OR description LIKE ?)';
+      sqlQ = ' AND (i.title LIKE ? OR i.description LIKE ?)';
       vals.push(`%${q}%`, `%${q}%`);
     } else {
-      sqlQ = ' AND MATCH(title, description) AGAINST (? IN NATURAL LANGUAGE MODE)';
+      sqlQ = ' AND MATCH(i.title, i.description) AGAINST (? IN NATURAL LANGUAGE MODE)';
       vals.push(q);
     }
   }
 
   const sql = `
-    SELECT *
-    FROM issues
+    SELECT
+      i.*,
+      u.display_name AS reported_by_name
+    FROM issues i
+    LEFT JOIN users u ON u.id = i.reported_by
     ${where.length ? 'WHERE ' + where.join(' AND ') : 'WHERE 1=1'}
     ${sqlQ}
-    ORDER BY anchor_time DESC, id DESC
+    ORDER BY i.anchor_time DESC, i.id DESC
     LIMIT ${Math.min(Number(limit) || 100, 500)}
   `;
   const [rows] = await db.query(sql, vals);
@@ -148,7 +151,13 @@ exports.list = async (req, res) => {
 
 // =============== Get one ===============
 exports.getOne = async (req, res) => {
-  const [rows] = await db.query('SELECT * FROM issues WHERE id=?', [req.params.id]);
+  const [rows] = await db.query(
+    `SELECT i.*, u.display_name AS reported_by_name
+       FROM issues i
+  LEFT JOIN users u ON u.id = i.reported_by
+      WHERE i.id=?`,
+    [req.params.id]
+  );
   if (!rows.length) return res.status(404).json({ message: 'Not found' });
   const issue = rows[0];
 
@@ -219,7 +228,7 @@ async function resolveContext(payload) {
         'SELECT recorded_at FROM vessel_positions WHERE id=? AND vessel_id=?',
         [out.vessel_position_id, out.vessel_id]
       );
-      if (!p) throw new Error('vessel_position_id not found for this vessel');
+        if (!p) throw new Error('vessel_position_id not found for this vessel');
       out.anchor_time = p.recorded_at;
       return out;
     }
