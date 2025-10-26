@@ -163,12 +163,27 @@ export default function RigsAdminPage() {
 
       {/* local styles for status dot */}
       <style>{`
-        .status-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#0b1220; border:1px solid #334155; cursor:default; }
+        .status-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:none; cursor:default; }
         .status-pill.editable { cursor:pointer; }
+        .status-pill.online {
+          background: rgba(34,197,94,0.15);   /* เขียวอ่อน */
+          color: #4ADE80;                     /* เขียวสด */
+          border-color: #4ADE80;
+        }
+        .status-pill.offline {
+          background: rgba(239,68,68,0.15);   /* แดงอ่อน */
+          color: #F87171;                     /* แดงสด */
+          border-color: #F87171;
+        }
+        .status-pill.maintenance {
+          background: rgba(245,158,11,0.15);  /* เหลืองอ่อน */
+          color: #fbbf24;                     /* เหลืองสด */
+          border-color: #fbbf24;
+        }
         .dot { width:10px; height:10px; border-radius:999px; }
-        .dot.online { background:#10b981; }
-        .dot.offline { background:#ef4444; }
-        .dot.maintenance { background:#f59e0b; }
+        .dot.online { background:#4ADE80; }
+        .dot.offline { background:#F87171; }
+        .dot.maintenance { background:#FACC15; }
         .status-menu { position:absolute; z-index:40; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:6px; box-shadow:0 12px 30px rgba(0,0,0,.35); }
         .status-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; }
         .status-item:hover { background:#111827; }

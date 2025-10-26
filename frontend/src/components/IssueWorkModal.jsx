@@ -279,7 +279,7 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
                 </div>
               ) : (
                 <div className="iwm-foot right">
-                  <button className="btn primary" onClick={onClose}>Close</button>
+                  <button className="btn" onClick={onClose}>Close</button>
                 </div>
               )}
             </>
@@ -377,8 +377,8 @@ function LightboxInline({ images = [], index = 0, onIndex, onClose }) {
 
 const css = `
 .iwm-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:60}
-.iwm-modal{width:min(980px,96vw);background:#0f172a;border:1px solid #1f2937;border-radius:16px;color:#e5e7eb;box-shadow:0 24px 70px rgba(0,0,0,.5);overflow:hidden}
-.iwm-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #1f2937}
+.iwm-modal{width:min(980px,96vw);background:#18232F;border:1px solid #1f2937;border-radius:16px;color:#e5e7eb;box-shadow:0 24px 70px rgba(0,0,0,.5);overflow:hidden}
+.iwm-head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:3px solid #111A22}
 .iwm-head h3{margin:0;font-size:26px;font-weight:700;letter-spacing:.2px}
 .iwm-back{border:none;background:transparent;color:#9ca3af;font-size:22px;cursor:pointer}
 .iwm-body{padding:22px 24px;display:flex;flex-direction:column;gap:16px}
@@ -390,7 +390,6 @@ const css = `
 .iwm-field{display:flex;flex-direction:column;gap:8px}
 .iwm-label{color:#9ca3af}
 .iwm-input{width:100%;border:1px solid #374151;background:#0b1220;color:#e5e7eb;border-radius:12px;padding:12px 14px}
-.iwm-input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.15)}
 .iwm-box{border:1px solid #374151;background:#0b1220;color:#e5e7eb;border-radius:12px;padding:14px;white-space:pre-wrap;min-height:120px}
 .iwm-plain{white-space:pre-wrap;line-height:1.45;color:#e5e7eb}
 .iwm-box-lg{min-height:160px;max-height:260px;overflow:auto;white-space:pre-wrap;line-height:1.45}
@@ -411,10 +410,13 @@ const css = `
 .iwm-foot{display:flex;gap:10px;margin-top:16px}
 .iwm-foot.right{justify-content:flex-end}
 .iwm-foot.center{justify-content:center}
-.btn{padding:10px 16px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;border-radius:999px;cursor:pointer}
-.btn.ghost{background:#0b1220}
-.btn.primary{background:#3b82f6;border-color:#3b82f6;color:#fff}
-.btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
+.iwm-modal .btn{padding:10px 16px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;border-radius:999px;cursor:pointer}
+.iwm-modal .btn.ghost{background:#0b1220}
+.iwm-modal .btn.ghost:hover{background:#23313d}
+.iwm-modal .btn.primary{background:#138AEC;border-color:#138AEC;color:#fff}
+.iwm-modal .btn.primary:hover{background:#1e5fe6}
+.iwm-modal .btn.danger{background:#ef4444;border-color:#ef4444;color:#fff}
+.iwm-modal .btn.danger:hover{background:#D50707}
 
 .iwm-dtwrap{position:relative;display:flex;align-items:center}
 .iwm-calbtn{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:#1f2937;color:#e5e7eb;border-radius:8px;padding:6px 8px;cursor:pointer}
