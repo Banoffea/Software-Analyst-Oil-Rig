@@ -1,5 +1,6 @@
 // frontend/src/pages/RigsAdminPage.jsx
 import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { listRigs, createRig, updateRig, deleteRig } from '../api/rigs';
 import { useAuth } from '../utils/auth.jsx';
 
@@ -33,27 +34,22 @@ export default function RigsAdminPage() {
     return c;
   }, [rows]);
 
-  const visible = rows; // server filtered already
+  const visible = rows;
 
   const changeStatus = async (row, s) => {
-  if (!canChangeStatus) return;
-  if (row.status === s) return;
+    if (!canChangeStatus) return;
+    if (row.status === s) return;
 
-  // แสดงกำลังบันทึก แต่ *ไม่* เปลี่ยนค่า status ล่วงหน้า
-  setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:true } : x));
-
-  try {
-    await updateRig(row.id, { status: s });
-    // ✅ ดึงข้อมูลจาก server มาคอนเฟิร์ม (กันค่า local เพี้ยน)
-    await load();
-  } catch (e) {
-    const msg = e?.response?.data?.message || 'Update status failed';
-    alert(msg);
-    // ยกเลิกสถานะ saving
-    setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:false } : x));
-  }
-};
-
+    setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:true } : x));
+    try {
+      await updateRig(row.id, { status: s });
+      await load(); // sync จาก server
+    } catch (e) {
+      const msg = e?.response?.data?.message || 'Update status failed';
+      alert(msg);
+      setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:false } : x));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -62,10 +58,7 @@ export default function RigsAdminPage() {
         <div className="flex gap-2">
           <button className="btn btn-ghost" onClick={load}>Refresh</button>
           {isAdmin && (
-            <button
-              className="btn btn-primary"
-              onClick={()=>{ setEditRow(null); setShowModal(true); }}
-            >
+            <button className="btn btn-primary" onClick={()=>{ setEditRow(null); setShowModal(true); }}>
               + Add rig
             </button>
           )}
@@ -161,30 +154,17 @@ export default function RigsAdminPage() {
         />
       }
 
-      {/* local styles for status dot */}
       <style>{`
         .status-pill { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; border:none; cursor:default; }
         .status-pill.editable { cursor:pointer; }
-        .status-pill.online {
-          background: rgba(34,197,94,0.15);   /* เขียวอ่อน */
-          color: #4ADE80;                     /* เขียวสด */
-          border-color: #4ADE80;
-        }
-        .status-pill.offline {
-          background: rgba(239,68,68,0.15);   /* แดงอ่อน */
-          color: #F87171;                     /* แดงสด */
-          border-color: #F87171;
-        }
-        .status-pill.maintenance {
-          background: rgba(245,158,11,0.15);  /* เหลืองอ่อน */
-          color: #fbbf24;                     /* เหลืองสด */
-          border-color: #fbbf24;
-        }
+        .status-pill.online { background: rgba(34,197,94,0.15); color:#4ADE80; }
+        .status-pill.offline { background: rgba(239,68,68,0.15); color:#F87171; }
+        .status-pill.maintenance { background: rgba(245,158,11,0.15); color:#fbbf24; }
         .dot { width:10px; height:10px; border-radius:999px; }
         .dot.online { background:#4ADE80; }
         .dot.offline { background:#F87171; }
         .dot.maintenance { background:#FACC15; }
-        .status-menu { position:absolute; z-index:40; background:#0b1220; border:1px solid #334155; border-radius:10px; padding:6px; box-shadow:0 12px 30px rgba(0,0,0,.35); }
+        .status-menu { background:#0b1220; border:1px solid #334155; border-radius:10px; padding:6px; box-shadow:0 12px 30px rgba(0,0,0,.35); }
         .status-item { display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; cursor:pointer; }
         .status-item:hover { background:#111827; }
       `}</style>
@@ -192,24 +172,46 @@ export default function RigsAdminPage() {
   );
 }
 
+/* ---------- StatusCell: dropdown ลอยด้วย Portal ---------- */
 function StatusCell({ value, saving, canEdit, onChange }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null); // <-- เปลี่ยนเป็น wrapper ref
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const anchorRef = useRef(null);
+  const menuRef = useRef(null);
 
+  // ปิดเมื่อคลิกนอก (ตรวจทั้ง anchor และ menu)
   useEffect(() => {
-    const onDoc = (e) => {
-      if (!wrapRef.current) return;
-      // ถ้าคลิกอยู่นอก wrapper (ที่ครอบ pill + menu) ค่อยปิด
-      if (!wrapRef.current.contains(e.target)) setOpen(false);
+    const onDocClick = (e) => {
+      if (!anchorRef.current) return;
+      const inAnchor = anchorRef.current.contains(e.target);
+      const inMenu = menuRef.current?.contains(e.target);
+      if (!inAnchor && !inMenu) setOpen(false);
     };
-    // จะใช้ 'click' หรือ 'mousedown' ก็ได้ แต่ 'click' ปลอดภัยกว่าในเคสนี้
-    document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
+    document.addEventListener('click', onDocClick); // ใช้ click (ไม่ใช้ mousedown)
+    return () => document.removeEventListener('click', onDocClick);
   }, []);
+
+  // อัปเดตพิกัดตอนเปิด/scroll/resize
+  const recalc = () => {
+    if (!anchorRef.current) return;
+    const r = anchorRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+  };
+  useEffect(() => { if (open) recalc(); }, [open]);
+  useEffect(() => {
+    const h = () => open && recalc();
+    window.addEventListener('scroll', h, true);
+    window.addEventListener('resize', h);
+    return () => {
+      window.removeEventListener('scroll', h, true);
+      window.removeEventListener('resize', h);
+    };
+  }, [open]);
 
   const pill = (
     <div
-      className={`status-pill ${canEdit ? 'editable' : ''}`}
+      ref={anchorRef}
+      className={`status-pill ${value} ${canEdit ? 'editable' : ''}`}
       onClick={() => canEdit && !saving && setOpen(v => !v)}
       title={canEdit ? (saving ? 'Saving…' : 'Click to change') : ''}
       role={canEdit ? 'button' : undefined}
@@ -220,7 +222,7 @@ function StatusCell({ value, saving, canEdit, onChange }) {
     >
       <span className={`dot ${value}`} />
       <span style={{ textTransform:'capitalize' }}>{value}</span>
-      {canEdit && <span className={`caret ${open ? 'up' : ''}`} aria-hidden="true">▾</span>}
+      {canEdit && <span aria-hidden="true">▾</span>}
       {saving && <span className="muted text-xs" style={{marginLeft:6}}>Saving…</span>}
     </div>
   );
@@ -228,12 +230,22 @@ function StatusCell({ value, saving, canEdit, onChange }) {
   if (!canEdit) return pill;
 
   return (
-    // ⬅️ ย้าย ref มาใส่ wrapper ที่ครอบทั้ง pill + menu
-    <div ref={wrapRef} style={{ position:'relative', display:'inline-block' }}>
+    <>
       {pill}
-      {open && !saving && (
-        <div className="status-menu" style={{ top:'110%', left:0 }}>
-          {['online','offline','maintenance'].map(s => (
+      {open && !saving && createPortal(
+        <div
+          ref={menuRef}
+          className="status-menu"
+          role="menu"
+          style={{
+            position: 'fixed',    // ลอยทับ ไม่ดันตาราง
+            top: pos.top,
+            left: pos.left,
+            minWidth: Math.max(160, pos.width),
+            zIndex: 1000
+          }}
+        >
+          {STATUSES.map(s => (
             <div
               key={s}
               className="status-item"
@@ -244,14 +256,14 @@ function StatusCell({ value, saving, canEdit, onChange }) {
               <span style={{ textTransform:'capitalize' }}>{s}</span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
 
-
-
+/* ---------- Modal ---------- */
 function RigModal({ row, onClose, onSaved }) {
   const [rig_code, setRigCode] = useState(row?.rig_code || '');
   const [name, setName] = useState(row?.name || '');
@@ -283,27 +295,39 @@ function RigModal({ row, onClose, onSaved }) {
           <div className="grid md:grid-cols-2 gap-3">
             <label className="block">
               <div className="muted text-xs mb-1">Rig code</div>
-              <input className="input w-full" value={rig_code} onChange={e=>setRigCode(e.target.value)} required disabled={!!row} onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={rig_code} onChange={e=>setRigCode(e.target.value)} required disabled={!!row}
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Name</div>
-              <input className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={name} onChange={e=>setName(e.target.value)} required
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block md:col-span-2">
               <div className="muted text-xs mb-1">Location</div>
-              <input className="input w-full" value={location} onChange={e=>setLocation(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={location} onChange={e=>setLocation(e.target.value)} required
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Lat</div>
-              <input className="input w-full" value={lat} onChange={e=>setLat(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={lat} onChange={e=>setLat(e.target.value)} required
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Lon</div>
-              <input className="input w-full" value={lon} onChange={e=>setLon(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={lon} onChange={e=>setLon(e.target.value)} required
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Capacity</div>
-              <input className="input w-full" value={capacity} onChange={e=>setCapacity(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+              <input className="input w-full" value={capacity} onChange={e=>setCapacity(e.target.value)} required
+                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                     onInput={e => e.target.setCustomValidity("")}/>
             </label>
             <label className="block">
               <div className="muted text-xs mb-1">Status</div>
