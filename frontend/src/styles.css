@@ -32,8 +32,9 @@ body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe U
 /* Buttons */
 .btn { border: 1px solid var(--line); background: var(--card); padding: 8px 12px; border-radius: 10px; cursor: pointer;}
 .btn:hover { background: var(--field); color: var(--text) }
-.btn-primary { border: none; background: var(--brand); color: var(--text); }
+.btn-primary { border: none; background: var(--brand); color: var(--text);}
 .btn-primary:hover { background: var(--brand-600); }
+.btn-primary-report-current { border: none; background: var(--brand); color: var(--text); margin-left: 50px ; display:  block}
 .btn-outline { background: transparent; color: var(--muted); border: none; }
 .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
 

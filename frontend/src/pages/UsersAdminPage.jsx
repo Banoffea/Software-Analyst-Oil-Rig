@@ -44,22 +44,26 @@ export default function UsersAdminPage() {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <div className="flex items-center gap-2">
-            <input
-              className="input"
-              placeholder="Search username / display name"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="all">All roles</option>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
+      <div className="card ">
+        <div className="card-head flex items-center py-3" style={{ gap: '5px' }}>
+          <input
+            className="input"
+            placeholder="Search username / display name"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ minWidth: 200, maxWidth: 265 }}
+          />
+          <select
+            className="select"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            style={{ minWidth: 120, maxWidth: 150 }}
+          >
+            <option value="all">All roles</option>
+            {ROLES.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
         </div>
 
         <div className="table-wrap">
@@ -139,7 +143,6 @@ function UserModal({ row, onClose, onSaved }) {
     setBusy(true);
     try {
       if (row) {
-        // EDIT: allow changing username too
         const nextUsername = username.trim();
         if (!nextUsername) {
           alert('username required');
@@ -147,14 +150,13 @@ function UserModal({ row, onClose, onSaved }) {
           return;
         }
         const payload = {
-          username: nextUsername,           // <-- send new username
+          username: nextUsername,
           display_name: (displayName || nextUsername).trim(),
           role,
         };
-        if (password) payload.password = password; // only change when provided
+        if (password) payload.password = password;
         await updateUser(row.id, payload);
       } else {
-        // CREATE
         const nextUsername = username.trim();
         const nextPassword = password.trim();
         if (!nextUsername || !nextPassword) {
