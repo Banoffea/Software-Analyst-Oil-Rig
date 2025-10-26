@@ -157,3 +157,40 @@ exports.addPositionsBulk = async (req, res) => {
   );
   res.json({ inserted: values.length });
 };
+
+exports.update = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ message: 'invalid id' });
+
+    // ✅ admin only
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'admin only' });
+    }
+
+    const [[exists]] = await db.query('SELECT * FROM vessels WHERE id=?', [id]);
+    if (!exists) return res.status(404).json({ message: 'not found' });
+
+    // ✅ อนุญาตแก้เฉพาะ name, vessel_no, capacity (ไม่แก้ status)
+    const allowed = ['name', 'vessel_no', 'capacity'];
+    const sets = [], vals = [];
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) {
+        sets.push(`${k}=?`);
+        // แปลงค่าว่างให้เป็น null
+        const val = req.body[k] === '' ? null : req.body[k];
+        vals.push(val);
+      }
+    }
+    if (!sets.length) return res.status(400).json({ message: 'nothing to update' });
+
+    vals.push(id);
+    await db.query(`UPDATE vessels SET ${sets.join(', ')} WHERE id=?`, vals);
+
+    const [[row]] = await db.query('SELECT * FROM vessels WHERE id=?', [id]);
+    res.json(row);
+  } catch (e) {
+    console.error('[vessels] update error:', e);
+    res.status(500).json({ message: 'failed to update vessel' });
+  }
+};

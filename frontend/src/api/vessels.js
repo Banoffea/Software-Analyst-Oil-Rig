@@ -17,3 +17,8 @@ export async function createVessel(payload) {
   const { data } = await api.post('/vessels', payload);
   return data; // { id: newId }
 }
+
+export async function updateVessel(id, payload) {
+  const { data } = await api.put(`/vessels/${id}`, payload);
+  return data;
+}

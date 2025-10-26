@@ -1,6 +1,7 @@
+// src/pages/VesselDashboard.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { listVessels, listLatestPositions, createVessel } from '../api/vessels';
-import { listShipments } from '../api/shipments';       // ✅ เพิ่ม
+import { listVessels, listLatestPositions, createVessel, updateVessel } from '../api/vessels';
+import { listShipments } from '../api/shipments';
 import IssueModal from '../components/IssueModal';
 import { useAuth } from '../utils/auth.jsx';
 
@@ -10,7 +11,6 @@ const SPEED_LIMIT = 15;         // overspeed threshold (kn)
 function fmt(n, d = 2) { return n == null ? '-' : Number(n).toFixed(d); }
 function fmtDeg(n)      { return n == null ? '-' : `${Number(n).toFixed(0)}°`; }
 function fmtTime(ts) { if (!ts) return '-'; return String(ts).replace('T',' ').slice(0,19); }
-const cx = (...a) => a.filter(Boolean).join(' ');
 const dedupeById = (arr=[]) => Array.from(new Map(arr.map(x=>[+x.id,x])).values());
 
 // ---------- Small UI bits ----------
@@ -87,6 +87,82 @@ function AddVesselModal({ open, onClose, onCreated }) {
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ---------- Edit Vessel Modal (ADMIN only; no status field) ----------
+function EditVesselModal({ open, vessel, onClose, onSaved }) {
+  const [name, setName] = useState(vessel?.name ?? '');
+  const [no, setNo] = useState(vessel?.vessel_no ?? '');
+  const [cap, setCap] = useState(vessel?.capacity ?? '');
+  const [busy, setBusy] = useState(false);
+  const first = useRef(null);
+
+  useEffect(() => {
+    if (open) {
+      setName(vessel?.name ?? '');
+      setNo(vessel?.vessel_no ?? '');
+      setCap(vessel?.capacity ?? '');
+      setTimeout(() => first.current?.focus(), 30);
+    }
+  }, [open, vessel]);
+
+  async function submit(e) {
+    e?.preventDefault?.();
+    if (!vessel?.id) return onClose?.();
+    if (!name.trim()) return alert('Please enter vessel name');
+    const capacity = String(cap).trim() === '' ? null : Number(cap);
+    if (String(cap).trim() !== '' && Number.isNaN(capacity)) return alert('Capacity must be a number');
+
+    try {
+      setBusy(true);
+      await updateVessel(vessel.id, {
+        name: name.trim(),
+        vessel_no: no.trim() || null,
+        capacity,
+        // ❌ ไม่ส่ง status
+      });
+      onSaved?.();
+      onClose?.();
+    } catch (e) {
+      console.error(e);
+      alert('Failed to update vessel');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e)=>{ if (e.target===e.currentTarget) onClose?.(); }}>
+      <form className="modal" onSubmit={submit} onMouseDown={e=>e.stopPropagation()}>
+        <h3 className="modal-title">Edit vessel — #{vessel?.id}</h3>
+
+        <label className="block">
+          <div className="muted text-xs mb-1">Vessel name</div>
+          <input ref={first} className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+        </label>
+
+        <div className="grid md:grid-cols-2 gap-3 mt-3">
+          <label className="block">
+            <div className="muted text-xs mb-1">Vessel No</div>
+            <input className="input w-full" value={no} onChange={e=>setNo(e.target.value)} />
+          </label>
+          <label className="block">
+            <div className="muted text-xs mb-1">Capacity</div>
+            <input className="input w-full" value={cap} onChange={e=>setCap(e.target.value)} />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-4">
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       </form>
@@ -178,12 +254,16 @@ export default function VesselDashboard() {
   const [q, setQ]             = useState('');
   const [showAdd, setShowAdd] = useState(false);
 
-  // สำหรับ History + IssueModal
+  // History + IssueModal
   const [histOpen, setHistOpen] = useState(false);
   const [histVessel, setHistVessel] = useState(null);
 
   const [issueOpen, setIssueOpen] = useState(false);
   const [issueDefaults, setIssueDefaults] = useState(null);
+
+  // Edit vessel (admin only)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editVessel, setEditVessel] = useState(null);
 
   async function load() {
     try {
@@ -241,18 +321,17 @@ export default function VesselDashboard() {
   return (
     <div className="space-y-6">
       {/* Header bar */}
-        <div className="flex items-center justify-between">
-          <h1 className="page-title">Vessels</h1>
-          <div className="flex gap-2">
-            <button className="btn btn-ghost" onClick={load}>Refresh</button>
-            {isAdmin && (                                    // <-- แสดงเฉพาะ admin
-              <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
-                + Add vessel
-              </button>
-            )}
-          </div>
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Vessels</h1>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={load}>Refresh</button>
+          {isAdmin && (
+            <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+              + Add vessel
+            </button>
+          )}
         </div>
-
+      </div>
 
       {/* Filters */}
       <div className="card">
@@ -297,7 +376,7 @@ export default function VesselDashboard() {
                 <th style={{width:140}}>Speed</th>
                 <th style={{width:120}}>Course</th>
                 <th style={{width:260}}>Last position</th>
-                <th style={{width:260}} className="text-right">Actions</th>
+                <th style={{width:300}} className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -341,7 +420,6 @@ export default function VesselDashboard() {
                           History
                         </button>
 
-                        {/* รายงานปัญหาแบบผูกกับ "เรือ" */}
                         <button
                           className="btn btn-primary"
                           onClick={() => {
@@ -352,7 +430,6 @@ export default function VesselDashboard() {
                           Report issue
                         </button>
 
-                        {/* one-click overspeed */}
                         {isOver && (
                           <button
                             className="btn btn-ghost"
@@ -366,6 +443,16 @@ export default function VesselDashboard() {
                             }}
                           >
                             Report overspeed
+                          </button>
+                        )}
+
+                        {/* ✅ Edit เฉพาะ admin; ไม่มีการแก้ status */}
+                        {isAdmin && (
+                          <button
+                            className="btn btn-ghost"
+                            onClick={() => { setEditVessel(v); setEditOpen(true); }}
+                          >
+                            Edit
                           </button>
                         )}
                       </div>
@@ -396,7 +483,15 @@ export default function VesselDashboard() {
         }}
       />
 
-      {/* ✅ ใช้ IssueModal แบบ lockType + รองรับ shipment */}
+      {/* Edit Modal (admin only) */}
+      <EditVesselModal
+        open={editOpen}
+        vessel={editVessel}
+        onClose={() => setEditOpen(false)}
+        onSaved={load}
+      />
+
+      {/* Issue Modal */}
       {issueOpen && (
         <IssueModal
           open={issueOpen}
@@ -409,7 +504,7 @@ export default function VesselDashboard() {
         />
       )}
 
-      {/* Scoped styles to match Issues theme */}
+      {/* Scoped styles */}
       <style>{`
         .chip{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:6px 10px;border:1px solid #e5e7eb;background:#f9fafb;color:#111827}
         .chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%}

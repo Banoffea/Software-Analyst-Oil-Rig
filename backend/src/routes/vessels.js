@@ -14,7 +14,9 @@ router.post('/', auth, ctrl.create);
 router.get('/:id/positions', auth, ctrl.track);         // GET /api/vessels/123/positions
 router.put('/:id/position',  auth, ctrl.updatePosition);
 router.get('/:id',  auth, ctrl.get);
-router.put('/:id',  auth, ctrl.update);
+
+// ✅ ใช้ PUT /:id สำหรับแก้ไขเรือ (ให้ controller เช็ค role=admin)
+router.put('/:id', auth, ctrl.update);
 
 // (option ถ้าจำเป็นสำหรับ simulator/tools)
 router.post('/positions',       ctrl.addPosition);
