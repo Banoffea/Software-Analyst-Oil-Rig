@@ -160,8 +160,9 @@ export default function IssuesList() {
     }
   };
 
-  // delete any issue (all roles)
+  // delete any issue (except approved)
   const handleDelete = async (row) => {
+    if (row.status === 'approved') return; // double guard (UI ซ่อนไปแล้ว)
     if (!window.confirm(`Delete report #${row.id}?`)) return;
     try {
       await deleteIssue(row.id);
@@ -247,7 +248,7 @@ export default function IssuesList() {
                 <th style={{width:90}}>Type</th>
                 <th>Context</th>
                 <th>Title</th>
-                <th style={{width:180}}>Reported by</th>{/* ✅ new */}
+                <th style={{width:180}}>Reported by</th>
                 <th style={{width:130}}>Severity</th>
                 <th style={{width:200}}>Status</th>
                 <th style={{width:170}}>Occurred</th>
@@ -258,25 +259,30 @@ export default function IssuesList() {
             <tbody>
               {loading && <tr><td colSpan={10} className="muted">Loading…</td></tr>}
               {!loading && !visible.length && <tr><td colSpan={10} className="muted">No issues found</td></tr>}
-              {!loading && visible.map(r => (
-                <tr key={r.id} className="hoverable">
-                  <td>#{r.id}</td>
-                  <td className="capitalize">{r.type}</td>
-                  <td className="muted">{contextText(r)}</td>
-                  <td>{r.title}</td>
-                  <td>{r.reported_by_name || (r.reported_by ? `User #${r.reported_by}` : '-')}</td>{/* ✅ new */}
-                  <td><SeverityBadge v={r.severity} /></td>
-                  <td><StatusBadge v={r.status} /></td>
-                  <td className="muted">{fmt(r.anchor_time)}</td>
-                  <td className="muted">{fmt(r.created_at)}</td>
-                  <td className="text-right">
-                    <div className="inline-flex gap-2">
-                      <button className="btn btn-primary" onClick={() => openWork(r)}>Open</button>
-                      <button className="btn btn-ghost" onClick={() => handleDelete(r)}>Delete</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {!loading && visible.map(r => {
+                const canDelete = r.status !== 'approved';
+                return (
+                  <tr key={r.id} className="hoverable">
+                    <td>#{r.id}</td>
+                    <td className="capitalize">{r.type}</td>
+                    <td className="muted">{contextText(r)}</td>
+                    <td>{r.title}</td>
+                    <td>{r.reported_by_name || (r.reported_by ? `User #${r.reported_by}` : '-')}</td>
+                    <td><SeverityBadge v={r.severity} /></td>
+                    <td><StatusBadge v={r.status} /></td>
+                    <td className="muted">{fmt(r.anchor_time)}</td>
+                    <td className="muted">{fmt(r.created_at)}</td>
+                    <td className="text-right">
+                      <div className="inline-flex gap-2">
+                        <button className="btn btn-primary" onClick={() => openWork(r)}>Open</button>
+                        {canDelete && (
+                          <button className="btn btn-ghost" onClick={() => handleDelete(r)}>Delete</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
