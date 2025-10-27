@@ -6,51 +6,93 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
   const [name, setName] = useState('');
   const [vesselNo, setVesselNo] = useState('');
   const [capacity, setCapacity] = useState('');
-  const [saving, setSaving] = useState(false);
-  const firstRef = useRef(null);
+  const [busy, setBusy] = useState(false);
 
+  const firstRef = useRef(null);
+  const capRef = useRef(null);
+
+  // keep latest onClose for ESC
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
+  // reset ONLY when open becomes true
   useEffect(() => {
     if (!open) return;
+
     setName('');
     setVesselNo('');
     setCapacity('');
+
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    setTimeout(() => firstRef.current?.focus(), 0);
-    return () => { document.body.style.overflow = prev; };
+    const t = setTimeout(() => firstRef.current?.focus(), 30);
+
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current?.(); };
+    window.addEventListener('keydown', onKey);
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+      clearTimeout(t);
+    };
   }, [open]);
 
   if (!open) return null;
 
+  const req = (v) => String(v).trim().length > 0;
+  const isPositiveInt = (v) => {
+    if (v === '' || v == null) return false;
+    const n = Number(v);
+    return Number.isFinite(n) && Number.isInteger(n) && n > 0;
+  };
+
+  const onCapKeydown = (e) => {
+    if (['e','E','+','-','.'].includes(e.key)) e.preventDefault();
+  };
+
   const submit = async (e) => {
     e.preventDefault();
 
-    const payload = {
-      name: name.trim(),
-      vessel_no: vesselNo.trim(),
-      capacity: Number(capacity),
-      status: 'idle',                 // always idle by default
-    };
-
-    // require all fields
-    if (!payload.name || !payload.vessel_no || !capacity) {
-      alert('Please fill in all fields.');
+    // HTML5 required bubbles for empty fields
+    if (!req(name) || !req(vesselNo) || !req(capacity)) {
+      // let browser show which field is missing
+      if (!req(name)) firstRef.current?.reportValidity?.();
+      else if (!req(vesselNo)) e.currentTarget.querySelector('#avm-vessel-no')?.reportValidity?.();
+      else capRef.current?.reportValidity?.();
       return;
     }
-    if (Number.isNaN(payload.capacity) || payload.capacity <= 0) {
-      alert('Capacity must be a positive number.');
+
+    // extra check for positive integer (show as browser bubble)
+    if (!isPositiveInt(capacity)) {
+      if (capRef.current) {
+        capRef.current.setCustomValidity('Capacity must be a positive integer');
+        capRef.current.reportValidity();
+        // clear after showing bubble, so next input can revalidate
+        setTimeout(() => capRef.current?.setCustomValidity(''), 0);
+      }
       return;
     }
 
     try {
-      setSaving(true);
-      await createVessel(payload);
-      setSaving(false);
+      setBusy(true);
+      await createVessel({
+        name: String(name).trim(),
+        vessel_no: String(vesselNo).trim(),
+        capacity: Number(capacity),
+        status: 'idle',
+      });
+      onCreated?.();
       onClose?.();
-      onCreated?.();                  // refresh list
     } catch (err) {
-      setSaving(false);
-      alert(err?.response?.data?.message || 'Create vessel failed');
+      // API error—surface as a browser bubble on capacity (still no inline text)
+      const msg = err?.response?.data?.message || 'Create vessel failed';
+      if (capRef.current) {
+        capRef.current.setCustomValidity(msg);
+        capRef.current.reportValidity();
+        setTimeout(() => capRef.current?.setCustomValidity(''), 0);
+      }
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -58,59 +100,69 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
 
   return (
     <div className="modal-backdrop" onMouseDown={onBackdrop}>
-      <div className="modal" onMouseDown={(e)=>e.stopPropagation()} style={{ maxWidth: 520 }}>
+      <form className="modal" onSubmit={submit} onMouseDown={(e)=>e.stopPropagation()}>
         <h3 className="modal-title">Add vessel</h3>
 
-        <form onSubmit={submit} className="space-y-3">
-          <label className="field">
-            <span>Name</span>
+        <div className="grid md:grid-cols-2 gap-3 mt-3">
+          <label className="block">
+            <div className="muted text-xs mb-1">Vessel No</div>
             <input
-              ref={firstRef}
-              className="input"
-              value={name}
-              onChange={e=>setName(e.target.value)}
+              id="avm-vessel-no"
+              className="input w-full"
+              placeholder="e.g. V11"
+              value={vesselNo}
+              onChange={(e)=>setVesselNo(e.target.value)}
               required
+              onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
+              onInput={e => e.target.setCustomValidity('')}
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="field">
-              <span>Vessel No</span>
-              <input
-                className="input"
-                value={vesselNo}
-                onChange={e=>setVesselNo(e.target.value)}
-                placeholder="e.g. V11"
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Capacity (bbl)</span>
-              <input
-                className="input"
-                type="number"
-                min="1"
-                step="1"
-                value={capacity}
-                onChange={e=>setCapacity(e.target.value)}
-                placeholder="e.g. 15000"
-                required
-              />
-            </label>
-          </div>
+        <label className="block">
+          <div className="muted text-xs mb-1">Vessel name</div>
+          <input
+            ref={firstRef}
+            id="avm-name"
+            className="input w-full"
+            placeholder="e.g. Poseidon"
+            value={name}
+            onChange={(e)=>setName(e.target.value)}
+            required
+            onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
+            onInput={e => e.target.setCustomValidity('')}
+          />
+        </label>
 
-          {/* Status field removed; default is idle */}
+          <label className="block">
+            <div className="muted text-xs mb-1">Capacity (bbl)</div>
+            <input
+              ref={capRef}
+              id="avm-capacity"
+              className="input w-full"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              step="1"
+              placeholder="e.g. 15000"
+              value={capacity}
+              onChange={(e)=>setCapacity(e.target.value)}
+              onKeyDown={onCapKeydown}
+              required
+              onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
+              onInput={e => e.target.setCustomValidity('')}
+            />
+          </label>
+        </div>
 
-          <div className="flex justify-end gap-2">
-            <button type="button" className="btn btn-ghost" onClick={()=>onClose?.()} disabled={saving}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" disabled={saving}>
-              Save
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -179,7 +179,6 @@ function StatusCell({ value, saving, canEdit, onChange }) {
   const anchorRef = useRef(null);
   const menuRef = useRef(null);
 
-  // ปิดเมื่อคลิกนอก (ตรวจทั้ง anchor และ menu)
   useEffect(() => {
     const onDocClick = (e) => {
       if (!anchorRef.current) return;
@@ -187,11 +186,10 @@ function StatusCell({ value, saving, canEdit, onChange }) {
       const inMenu = menuRef.current?.contains(e.target);
       if (!inAnchor && !inMenu) setOpen(false);
     };
-    document.addEventListener('click', onDocClick); // ใช้ click (ไม่ใช้ mousedown)
+    document.addEventListener('click', onDocClick);
     return () => document.removeEventListener('click', onDocClick);
   }, []);
 
-  // อัปเดตพิกัดตอนเปิด/scroll/resize
   const recalc = () => {
     if (!anchorRef.current) return;
     const r = anchorRef.current.getBoundingClientRect();
@@ -238,7 +236,7 @@ function StatusCell({ value, saving, canEdit, onChange }) {
           className="status-menu"
           role="menu"
           style={{
-            position: 'fixed',    // ลอยทับ ไม่ดันตาราง
+            position: 'fixed',
             top: pos.top,
             left: pos.left,
             minWidth: Math.max(160, pos.width),
@@ -274,11 +272,26 @@ function RigModal({ row, onClose, onSaved }) {
   const [status, setStatus] = useState(row?.status || 'online');
   const [busy, setBusy] = useState(false);
 
+  const toNumOrNull = (v) => {
+    const t = String(v ?? '').trim();
+    if (!t) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+
   async function submit(e){
     e.preventDefault();
     setBusy(true);
     try {
-      const payload = { rig_code, name, location, lat, lon, capacity, status };
+      const payload = {
+        rig_code: String(rig_code).trim(),
+        name: String(name).trim(),
+        location: String(location).trim() || null,   // optional
+        lat: toNumOrNull(lat),                       // optional
+        lon: toNumOrNull(lon),                       // optional
+        capacity: toNumOrNull(capacity),             // optional
+        status
+      };
       if (row) await updateRig(row.id, payload);
       else     await createRig(payload);
       onSaved?.();
@@ -295,40 +308,71 @@ function RigModal({ row, onClose, onSaved }) {
           <div className="grid md:grid-cols-2 gap-3">
             <label className="block">
               <div className="muted text-xs mb-1">Rig code</div>
-              <input className="input w-full" value={rig_code} onChange={e=>setRigCode(e.target.value)} required disabled={!!row}
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <input
+                className="input w-full"
+                placeholder="e.g. RIG-A"
+                value={rig_code}
+                onChange={e=>setRigCode(e.target.value)}
+                required
+                disabled={!!row}
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInput={e => e.target.setCustomValidity("")}
+              />
             </label>
+
             <label className="block">
               <div className="muted text-xs mb-1">Name</div>
-              <input className="input w-full" value={name} onChange={e=>setName(e.target.value)} required
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <input
+                className="input w-full"
+                placeholder="e.g. Rig A"
+                value={name}
+                onChange={e=>setName(e.target.value)}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInput={e => e.target.setCustomValidity("")}
+              />
             </label>
+
             <label className="block md:col-span-2">
-              <div className="muted text-xs mb-1">Location</div>
-              <input className="input w-full" value={location} onChange={e=>setLocation(e.target.value)} required
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <div className="muted text-xs mb-1">Location <span className="muted">(optional)</span></div>
+              <input
+                className="input w-full"
+                placeholder="e.g. Gulf of Thailand"
+                value={location}
+                onChange={e=>setLocation(e.target.value)}
+              />
             </label>
+
             <label className="block">
-              <div className="muted text-xs mb-1">Lat</div>
-              <input className="input w-full" value={lat} onChange={e=>setLat(e.target.value)} required
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <div className="muted text-xs mb-1">Lat <span className="muted">(optional)</span></div>
+              <input
+                className="input w-full"
+                placeholder="e.g. 13.111110"
+                value={lat}
+                onChange={e=>setLat(e.target.value)}
+              />
             </label>
+
             <label className="block">
-              <div className="muted text-xs mb-1">Lon</div>
-              <input className="input w-full" value={lon} onChange={e=>setLon(e.target.value)} required
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <div className="muted text-xs mb-1">Lon <span className="muted">(optional)</span></div>
+              <input
+                className="input w-full"
+                placeholder="e.g. 99.124100"
+                value={lon}
+                onChange={e=>setLon(e.target.value)}
+              />
             </label>
+
             <label className="block">
-              <div className="muted text-xs mb-1">Capacity</div>
-              <input className="input w-full" value={capacity} onChange={e=>setCapacity(e.target.value)} required
-                     onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
-                     onInput={e => e.target.setCustomValidity("")}/>
+              <div className="muted text-xs mb-1">Capacity <span className="muted">(optional)</span></div>
+              <input
+                className="input w-full"
+                placeholder="e.g. 50000"
+                value={capacity}
+                onChange={e=>setCapacity(e.target.value)}
+              />
             </label>
+
             <label className="block">
               <div className="muted text-xs mb-1">Status</div>
               <select className="select w-full" value={status} onChange={e=>setStatus(e.target.value)}>

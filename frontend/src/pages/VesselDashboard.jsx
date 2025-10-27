@@ -1,8 +1,9 @@
 // src/pages/VesselDashboard.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { listVessels, listLatestPositions, createVessel, updateVessel } from '../api/vessels';
+import React, { useEffect, useMemo, useState } from 'react';
+import { listVessels, listLatestPositions, updateVessel } from '../api/vessels';
 import { listShipments } from '../api/shipments';
 import IssueModal from '../components/IssueModal';
+import AddVesselModal from '../components/AddVesselModal'; // ✅ ใช้ตัวคอมโพเนนต์แยกไฟล์
 import { useAuth } from '../utils/auth.jsx';
 
 const POLL_MS = 10000;          // refresh every 10s
@@ -26,111 +27,46 @@ const StatusPill = ({ status }) => {
   );
 };
 
-// ---------- Add Vessel Modal ----------
-function AddVesselModal({ open, onClose, onCreated }) {
-  const [name, setName] = useState('');
-  const [no, setNo] = useState('');
-  const [cap, setCap] = useState('');
-  const [busy, setBusy] = useState(false);
-  const first = useRef(null);
-
-  useEffect(() => {
-    if (open) {
-      setTimeout(() => first.current?.focus(), 50);
-    } else {
-      setName(''); setNo(''); setCap('');
-    }
-  }, [open]);
-
-  async function submit(e) {
-    e?.preventDefault?.();
-    if (!name.trim()) return alert('Please enter vessel name');
-    const capacity = cap.trim() === '' ? null : Number(cap);
-    if (cap.trim() !== '' && Number.isNaN(capacity)) return alert('Capacity must be a number');
-
-    try {
-      setBusy(true);
-      await createVessel({ name: name.trim(), vessel_no: no.trim() || null, capacity, status: 'idle' });
-      onCreated?.();
-      onClose?.();
-    } catch (e) {
-      console.error(e);
-      alert('Failed to create vessel');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!open) return null;
-  return (
-    <div className="modal-backdrop" onMouseDown={(e)=>{ if (e.target===e.currentTarget) onClose?.(); }}>
-      <form className="modal" onSubmit={submit} onMouseDown={e=>e.stopPropagation()}>
-        <h3 className="modal-title">Add new vessel</h3>
-
-        <label className="block">
-          <div className="muted text-xs mb-1">Vessel name</div>
-          <input ref={first} className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
-        </label>
-
-        <div className="grid md:grid-cols-2 gap-3 mt-3">
-          <label className="block">
-            <div className="muted text-xs mb-1">Vessel No (optional)</div>
-            <input className="input w-full" value={no} onChange={e=>setNo(e.target.value)} />
-          </label>
-          <label className="block">
-            <div className="muted text-xs mb-1">Capacity (optional)</div>
-            <input className="input w-full" value={cap} onChange={e=>setCap(e.target.value)} />
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-4">
-          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? 'Adding…' : 'Add'}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
 // ---------- Edit Vessel Modal (ADMIN only; no status field) ----------
 function EditVesselModal({ open, vessel, onClose, onSaved }) {
   const [name, setName] = useState(vessel?.name ?? '');
   const [no, setNo] = useState(vessel?.vessel_no ?? '');
   const [cap, setCap] = useState(vessel?.capacity ?? '');
   const [busy, setBusy] = useState(false);
-  const first = useRef(null);
 
   useEffect(() => {
     if (open) {
       setName(vessel?.name ?? '');
       setNo(vessel?.vessel_no ?? '');
       setCap(vessel?.capacity ?? '');
-      setTimeout(() => first.current?.focus(), 30);
     }
   }, [open, vessel]);
+
+  const valid =
+    String(name).trim().length > 0 &&
+    String(no).trim().length > 0 &&
+    Number.isFinite(Number(cap)) &&
+    Number(cap) > 0;
 
   async function submit(e) {
     e?.preventDefault?.();
     if (!vessel?.id) return onClose?.();
-    if (!name.trim()) return alert('Please enter vessel name');
-    const capacity = String(cap).trim() === '' ? null : Number(cap);
-    if (String(cap).trim() !== '' && Number.isNaN(capacity)) return alert('Capacity must be a number');
+    if (!valid) return alert('Please fill in all fields correctly (name, vessel no, capacity > 0).');
 
     try {
       setBusy(true);
       await updateVessel(vessel.id, {
-        name: name.trim(),
-        vessel_no: no.trim() || null,
-        capacity,
+        name: String(name).trim(),
+        vessel_no: String(no).trim(),
+        capacity: Number(cap),
         // ❌ ไม่ส่ง status
       });
       onSaved?.();
       onClose?.();
     } catch (e) {
       console.error(e);
-      alert('Failed to update vessel');
+      const msg = e?.response?.data?.message || 'Failed to update vessel';
+      alert(msg);
     } finally {
       setBusy(false);
     }
@@ -145,23 +81,44 @@ function EditVesselModal({ open, vessel, onClose, onSaved }) {
 
         <label className="block">
           <div className="muted text-xs mb-1">Vessel name</div>
-          <input ref={first} className="input w-full" value={name} onChange={e=>setName(e.target.value)} required onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")} onInput={e => e.target.setCustomValidity("")}/>
+          <input
+            className="input w-full"
+            value={name}
+            onChange={e=>setName(e.target.value)}
+            required
+            onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+            onInput={e => e.target.setCustomValidity("")}
+          />
         </label>
 
         <div className="grid md:grid-cols-2 gap-3 mt-3">
           <label className="block">
             <div className="muted text-xs mb-1">Vessel No</div>
-            <input className="input w-full" value={no} onChange={e=>setNo(e.target.value)} />
+            <input
+              className="input w-full"
+              value={no}
+              onChange={e=>setNo(e.target.value)}
+              required
+            />
           </label>
           <label className="block">
-            <div className="muted text-xs mb-1">Capacity</div>
-            <input className="input w-full" value={cap} onChange={e=>setCap(e.target.value)} />
+            <div className="muted text-xs mb-1">Capacity (bbl)</div>
+            <input
+              className="input w-full"
+              type="number"
+              min="1"
+              step="1"
+              value={cap}
+              onChange={e=>setCap(e.target.value)}
+              onKeyDown={(e)=>{ if (['e','E','+','-','.'].includes(e.key)) e.preventDefault(); }}
+              required
+            />
           </label>
         </div>
 
         <div className="flex justify-end gap-2 mt-4">
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy || !valid}>
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
