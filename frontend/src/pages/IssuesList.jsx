@@ -42,7 +42,7 @@ function StatusBadge({ v }) {
     waiting_approval:'#a855f7',     // legacy
     need_rework:'#ef4444',
     approved:'#10b981',
-    awaiting_manage_approval:'#2563eb',
+    awaiting_manager_approval:'#2563eb',
     awaiting_fleet_approval:'#14b8a6',
   };
   return (
@@ -81,7 +81,7 @@ const STATUS_FILTERS = [
   'in_progress',
   'need_rework',
   'awaiting_fleet_approval',
-  'awaiting_manage_approval',
+  'awaiting_manager_approval',
   'approved',
 ];
 

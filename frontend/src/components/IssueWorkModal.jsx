@@ -36,7 +36,7 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
   );
 
   const canFleetApprove = row.status === 'awaiting_fleet_approval' && role === 'fleet';
-  const canMgrApprove   = row.status === 'awaiting_manage_approval' && role === 'manager';
+  const canMgrApprove   = row.status === 'awaiting_manager_approval' && role === 'manager';
 
   // helpers
   const fmtDT = (ts) => (ts || '').replace('T', ' ').slice(0, 16);

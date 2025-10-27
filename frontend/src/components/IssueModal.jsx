@@ -158,7 +158,7 @@ export default function IssueModal({
     const descTrimmed = (desc || "").trim();
     if (!descTrimmed) {
       descRef.current?.focus();
-      alert("Please enter a description.");
+      // alert("Please enter a description.");
       return;
     }
 
@@ -415,7 +415,7 @@ export default function IssueModal({
               placeholder="Describe the problem, steps, impact, etc."
             />
             {showDescError && (
-              <div className="err">กรุณากรอกรายละเอียด (Description) ก่อนกด Submit</div>
+              <div className="err">Please fill in all the information.</div>
             )}
           </label>
 

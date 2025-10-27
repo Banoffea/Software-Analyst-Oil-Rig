@@ -219,7 +219,7 @@ function VesselHistoryModal({ vessel, open, onClose, onReport }) {
                   <td>{sh.status}</td>
                   <td className="text-right">
                     <button
-                      className="btn btn-ghost"
+                      className="btn btn-primary"
                       onClick={() => onReport({
                         type: 'shipment',
                         vesselId: vessel.id,
