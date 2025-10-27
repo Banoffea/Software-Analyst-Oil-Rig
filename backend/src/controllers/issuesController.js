@@ -120,8 +120,10 @@ exports.list = async (req, res) => {
   if (shipment_id)  { where.push('i.shipment_id=?'); vals.push(shipment_id); }
   if (status)       { where.push('i.status=?'); vals.push(status); }
   if (severity)     { where.push('i.severity=?'); vals.push(severity); }
-  if (from)         { where.push('i.anchor_time >= ?'); vals.push(from); }
-  if (to)           { where.push('i.anchor_time < ?');  vals.push(to); }
+
+  // ✅ เปลี่ยน filter ช่วงวันที่ให้ใช้ created_at
+  if (from)         { where.push('i.created_at >= ?'); vals.push(from); }
+  if (to)           { where.push('i.created_at < ?');  vals.push(to); }
 
   let sqlQ = '';
   if (q) {
@@ -142,7 +144,8 @@ exports.list = async (req, res) => {
     LEFT JOIN users u ON u.id = i.reported_by
     ${where.length ? 'WHERE ' + where.join(' AND ') : 'WHERE 1=1'}
     ${sqlQ}
-    ORDER BY i.anchor_time DESC, i.id DESC
+    -- ✅ เรียงตาม created_at ให้สอดคล้องกับช่วงที่กรอง
+    ORDER BY i.created_at DESC, i.id DESC
     LIMIT ${Math.min(Number(limit) || 100, 500)}
   `;
   const [rows] = await db.query(sql, vals);
@@ -228,7 +231,7 @@ async function resolveContext(payload) {
         'SELECT recorded_at FROM vessel_positions WHERE id=? AND vessel_id=?',
         [out.vessel_position_id, out.vessel_id]
       );
-        if (!p) throw new Error('vessel_position_id not found for this vessel');
+      if (!p) throw new Error('vessel_position_id not found for this vessel');
       out.anchor_time = p.recorded_at;
       return out;
     }
@@ -406,8 +409,13 @@ exports.approveIssue = async (req, res) => {
     if (role !== 'fleet') {
       return res.status(403).json({ message: 'Only fleet can approve here' });
     }
-    await db.query('UPDATE issues SET status=?, updated_at=NOW() WHERE id=?', ['awaiting_manager_approval', id]);
-    return res.json({ ok: true, status: 'awaiting_manager_approval' });
+    await db.query(`
+      UPDATE issues
+         SET status='awaiting_manager_approval',
+             updated_at=NOW()
+       WHERE id=?`, [id]);
+    const [[after]] = await db.query('SELECT status, finish_time FROM issues WHERE id=?', [id]);
+    return res.json({ ok: true, status: after.status, finish_time: after.finish_time });
   }
 
   // Final: manager only (admin/captain/fleet blocked)
