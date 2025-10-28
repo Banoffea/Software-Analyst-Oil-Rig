@@ -55,7 +55,7 @@ export default function IssueModal({
   const [vposId, setVposId] = useState(defaultVesselPosId ?? "");
   const [shipmentId, setShipmentId] = useState(defaultShipmentId ?? "");
 
-  const [severity, setSeverity] = useState("low");
+  const [severity, setSeverity] = useState("");
   const [title, setTitle] = useState(defaultTitle || "");
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
@@ -82,18 +82,10 @@ export default function IssueModal({
     setVesselId(defaultVesselId ?? "");
     setVposId(defaultVesselPosId ?? "");
     setShipmentId(defaultShipmentId ?? "");
-    setSeverity("low");
+    setSeverity("");
     setDesc("");
     setTriedSubmit(false);
     setAnchorAt(nowLocalForInput());
-
-    const seeded = defaultTitle || makeAutoTitle(defaultType, {
-      shipmentId: defaultShipmentId ?? "",
-      vesselId: defaultVesselId ?? "",
-      lotId: defaultLotId ?? "",
-      rigId: defaultRigId ?? "",
-    });
-    setTitle(seeded);
     setTitleTouched(Boolean(defaultTitle));
 
     const prev = document.body.style.overflow;
@@ -113,12 +105,6 @@ export default function IssueModal({
     defaultShipmentId,
     defaultTitle,
   ]);
-
-  // auto title until user types
-  useEffect(() => {
-    if (!open || titleTouched) return;
-    setTitle(makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId }));
-  }, [open, titleTouched, type, shipmentId, vesselId, lotId, rigId]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,6 +145,11 @@ export default function IssueModal({
     if (!descTrimmed) {
       descRef.current?.focus();
       // alert("Please enter a description.");
+      return;
+    }
+
+    if (!severity) {
+      alert("Please select severity.");
       return;
     }
 
@@ -227,7 +218,8 @@ export default function IssueModal({
               </label>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
+                  <option value="" disabled hidden>-- Select severity --</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -249,7 +241,8 @@ export default function IssueModal({
               </div>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
+                  <option value="" disabled hidden>-- Select severity --</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -399,13 +392,13 @@ export default function IssueModal({
                 setTitleTouched(true);
               }}
               required
-              placeholder={makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
+              placeholder={"Ex. " + makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
             />
           </label>
 
           {/* Description + error message */}
           <label className="f">
-            <span>Description <span className="muted">(required)</span></span>
+            <span>Description</span>
             <textarea
               ref={descRef}
               className={`in ${showDescError ? "error" : ""}`}

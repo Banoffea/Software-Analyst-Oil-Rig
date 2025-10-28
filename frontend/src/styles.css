@@ -265,6 +265,44 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   pointer-events: none; /* ให้คลิกทะลุไปถึง input ได้ */
 }
 
+/* ===== In-field calendar icon (used in OilDashboard & IssuesList) ===== */
+.dt2 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.dt2-input {
+  padding-right: 44px !important;
+  min-width: 200px;
+}
+
+.dt2-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  color: var(--muted, #92B0C9);
+}
+
+.dt2-icon:hover {
+  color: var(--brand, #138AEC);
+}
+
+/* ซ่อนปุ่ม calendar ของ browser */
+.dt2-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+.dt2-input::-ms-clear {
+  display: none;
+}
+
 /** Logout **/
 
 .logout-btn{

@@ -1,5 +1,5 @@
 // src/pages/OilDashboard.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { listRigs } from '../api/rigs';
 import { getLatestPerRig } from '../api/readings';
 import { listLotsByRig } from '../api/lots';
@@ -32,6 +32,16 @@ export default function OilDashboard() {
   });
 
   const [viewLot, setViewLot] = useState(null);
+
+  // ===== Ref สำหรับ date picker ใน-field icon =====
+  const dateRef = useRef(null);
+  const openDatePicker = () => {
+    const el = dateRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.focus();
+  };
+  // =================================================
 
   // โหลดรายชื่อแท่น
   useEffect(() => {
@@ -100,14 +110,39 @@ export default function OilDashboard() {
                 </option>
               ))}
             </select>
+            
 
             <span className="muted">Date</span>
-            <input
-              type="date"
-              className="select"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <div className="flex flex-col"></div>
+            <div className="dt2">
+              <input
+                ref={dateRef}
+                type="date"
+                className="select dt2-input"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+              <button
+                type="button"
+                className="dt2-icon"
+                onClick={openDatePicker}
+                aria-label="Pick date"
+                title="Pick date"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="muted text-sm">
@@ -116,8 +151,6 @@ export default function OilDashboard() {
         </div>
 
         <RealtimeDailyChart rigId={rigId} date={date} height={380} />
-
-        
       </div>
 
       {/* ตาราง lots */}
@@ -193,18 +226,43 @@ export default function OilDashboard() {
 
       {/* Modal ดูรายละเอียดล็อต */}
       <LotDetailModal lot={viewLot} rigId={rigId} onClose={() => setViewLot(null)} />
+
+      {/* ===== Scoped styles for in-field calendar icon (ใช้ร่วมกับ IssuesList) ===== */}
+      <style>{CSS_DT2}</style>
     </div>
   );
 }
 
-function Metric({ k, v, u }) {
-  const val = v == null ? '-' : Number(v).toLocaleString();
-  return (
-    <div className="metric">
-      <div className="metric-k">{k}</div>
-      <div className="metric-v">
-        {val} {val !== '-' ? u : ''}
-      </div>
-    </div>
-  );
+/* Scoped CSS เฉพาะคอมโพเนนต์นี้ (ถ้าย้ายไป global ได้, ย้ายบล็อกนี้ไป styles.css แล้วลบ <style> ข้างบนได้เลย) */
+const CSS_DT2 = `
+.dt2 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
+.dt2-input {
+  padding-right: 44px !important;
+  min-width: 350px;
+}
+.dt2-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  color: var(--muted, #92B0C9);
+}
+.dt2-icon:hover {
+  color: var(--brand, #138AEC);
+}
+/* ซ่อน calendar indicator ของ browser เพื่อใช้ไอคอนเราแทน */
+.dt2-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+/* ป้องกันไอคอนโดนบังในบาง browser */
+.dt2-input::-ms-clear { display: none; }
+`;

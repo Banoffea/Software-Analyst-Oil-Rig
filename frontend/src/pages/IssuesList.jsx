@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+// src/pages/IssuesList.jsx
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { listIssues, getIssue, deleteIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
 import IssueWorkModal from '../components/IssueWorkModal';
@@ -99,6 +100,17 @@ export default function IssuesList() {
 
   const [workRow, setWorkRow] = useState(null);           // data for IssueWorkModal
 
+  // Refs + helper for in-field calendar icon
+  const fromRef = useRef(null);
+  const toRef   = useRef(null);
+
+  const openPicker = (ref) => {
+    const el = ref?.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.focus();
+  };
+
   // role-based visibility
   const allowedTypes = useMemo(() => {
     if (role === 'production') return ['oil','lot'];
@@ -162,7 +174,7 @@ export default function IssuesList() {
 
   // delete any issue (except approved)
   const handleDelete = async (row) => {
-    if (row.status === 'approved') return; // double guard (UI ซ่อนไปแล้ว)
+    if (row.status === 'approved') return; // double guard
     if (!window.confirm(`Delete report #${row.id}?`)) return;
     try {
       await deleteIssue(row.id);
@@ -222,21 +234,67 @@ export default function IssuesList() {
             ))}
           </select>
 
-          <input
-            type="datetime-local"
-            className="input"
-            value={from}
-            onChange={e => setFrom(e.target.value)}
-            style={{ maxWidth: 200 }}
-          />
+          {/* From with in-field calendar icon (scoped CSS) */}
+          <div className="dt2">
+            <input
+              ref={fromRef}
+              type="datetime-local"
+              className="input dt2-input"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="dt2-icon"
+              onClick={() => openPicker(fromRef)}
+              aria-label="Pick from date & time"
+              title="Pick date & time"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18" height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor" strokeWidth="2"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+            </button>
+          </div>
+
           <span className="muted">to</span>
-          <input
-            type="datetime-local"
-            className="input"
-            value={to}
-            onChange={e => setTo(e.target.value)}
-            style={{ maxWidth: 200 }}
-          />
+
+          {/* To with in-field calendar icon (scoped CSS) */}
+          <div className="dt2">
+            <input
+              ref={toRef}
+              type="datetime-local"
+              className="input dt2-input"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="dt2-icon"
+              onClick={() => openPicker(toRef)}
+              aria-label="Pick to date & time"
+              title="Pick date & time"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18" height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor" strokeWidth="2"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Table */}
@@ -297,6 +355,51 @@ export default function IssuesList() {
           onClose={() => setWorkRow(null)}
         />
       )}
+
+      {/* ===== Scoped styles for in-field calendar icon ===== */}
+      <style>{CSS_DT2}</style>
     </div>
   );
 }
+
+/* Scoped CSS */
+const CSS_DT2 = `
+/* wrapper ของช่อง datetime-local */
+.dt2 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* เพิ่มช่องว่างขวาให้พอสำหรับไอคอน */
+.dt2-input {
+  padding-right: 44px !important;
+  min-width: 200px;
+}
+
+/* ปุ่มไอคอนอยู่ "ข้างใน" ช่อง */
+.dt2-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  color: var(--muted, #92B0C9);
+}
+
+.dt2-icon:hover {
+  color: var(--brand, #138AEC);
+}
+
+/* ซ่อน calendar indicator ของ browser เพื่อใช้ไอคอนเราแทน */
+.dt2-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* ป้องกันไอคอนโดนบังในบาง browser ที่มี padding/outline แปลก ๆ */
+.dt2-input::-ms-clear { display: none; }
+`;

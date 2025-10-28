@@ -81,8 +81,8 @@ export default function RigsAdminPage() {
           <div className="flex items-center gap-2">
             <input
               className="input"
-              placeholder="Search by code/name/location"
-              style={{minWidth:260}}
+              placeholder="Search by code / name / location"
+              style={{minWidth:264}}
               value={q}
               onChange={e=>setQ(e.target.value)}
             />
