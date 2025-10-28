@@ -39,7 +39,7 @@ export default function IssueModal({
   defaultVesselPosId = null,
   defaultShipmentId = null,
   lockType = false,
-  defaultTitle = "",
+  defaultTitle = "", // จะถูก "เมิน" แล้ว (ไม่ auto-fill)
 }) {
   const { me } = useAuth();
   const isAdmin = me?.role === "admin"; // ⬅️ กัน admin ไม่ให้รายงาน
@@ -56,7 +56,7 @@ export default function IssueModal({
   const [shipmentId, setShipmentId] = useState(defaultShipmentId ?? "");
 
   const [severity, setSeverity] = useState("");
-  const [title, setTitle] = useState(defaultTitle || "");
+  const [title, setTitle] = useState("");             // ⬅️ ไม่มี default title แล้ว
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
   const [triedSubmit, setTriedSubmit] = useState(false);
@@ -86,7 +86,8 @@ export default function IssueModal({
     setDesc("");
     setTriedSubmit(false);
     setAnchorAt(nowLocalForInput());
-    setTitleTouched(Boolean(defaultTitle));
+    setTitle("");                 // ⬅️ reset เป็นค่าว่างเสมอ
+    setTitleTouched(false);       // ⬅️ ไม่ถือว่าผู้ใช้เคยแก้
 
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -103,7 +104,7 @@ export default function IssueModal({
     defaultVesselId,
     defaultVesselPosId,
     defaultShipmentId,
-    defaultTitle,
+    defaultTitle, // อยู่ใน deps ได้ แต่จะไม่ถูกใช้
   ]);
 
   useEffect(() => {
@@ -144,7 +145,6 @@ export default function IssueModal({
     const descTrimmed = (desc || "").trim();
     if (!descTrimmed) {
       descRef.current?.focus();
-      // alert("Please enter a description.");
       return;
     }
 
