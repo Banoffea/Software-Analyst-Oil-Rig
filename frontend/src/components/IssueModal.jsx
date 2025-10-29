@@ -392,7 +392,7 @@ export default function IssueModal({
                 setTitleTouched(true);
               }}
               required
-              placeholder={"Ex. " + makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
+              placeholder={"e.g. " + makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
             />
           </label>
 

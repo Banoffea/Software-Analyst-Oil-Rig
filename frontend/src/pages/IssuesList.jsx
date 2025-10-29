@@ -77,6 +77,46 @@ function contextText(row) {
   return '-';
 }
 
+function normalize(s) {
+  return (s || '').toString().toLowerCase();
+}
+
+function buildContextAliases(row) {
+  const a = [];
+  if (row.type === 'oil') {
+    if (row.rig_id) a.push(`rig ${row.rig_id}`, `rig#${row.rig_id}`);
+    if (row.reading_id) a.push(`reading ${row.reading_id}`, `reading#${row.reading_id}`);
+  } else if (row.type === 'lot') {
+    if (row.rig_id) a.push(`rig ${row.rig_id}`, `rig#${row.rig_id}`);
+    if (row.lot_id) a.push(`lot ${row.lot_id}`, `lot#${row.lot_id}`);
+  } else if (row.type === 'vessel') {
+    if (row.vessel_id) a.push(`vessel ${row.vessel_id}`, `vessel#${row.vessel_id}`);
+    if (row.vessel_position_id)
+      a.push(`pos ${row.vessel_position_id}`, `position ${row.vessel_position_id}`, `pos#${row.vessel_position_id}`);
+  } else if (row.type === 'shipment') {
+    if (row.vessel_id) a.push(`vessel ${row.vessel_id}`, `vessel#${row.vessel_id}`);
+    if (row.shipment_id)
+      a.push(`voyage ${row.shipment_id}`, `voyage#${row.shipment_id}`, `shipment ${row.shipment_id}`, `shipment#${row.shipment_id}`);
+  }
+  const nums = [row.rig_id, row.lot_id, row.vessel_id, row.shipment_id, row.reading_id, row.vessel_position_id]
+    .filter(Boolean)
+    .map(String);
+  return [...a, ...nums];
+}
+
+function buildSearchHaystack(row) {
+  const pieces = [
+    row.id ? `#${row.id}` : '',
+    row.type || '',
+    row.title || '',             // ✅ title
+    contextText(row) || '',      // ✅ context
+    ...buildContextAliases(row),
+  ];
+  return normalize(pieces.filter(Boolean).join(' | '));
+}
+
+const SEVERITY_FILTERS = ['low', 'medium', 'high', 'critical'];
+
 /** Statuses available in the FILTER (legacy values removed) */
 const STATUS_FILTERS = [
   'in_progress',
@@ -91,6 +131,7 @@ export default function IssuesList() {
   const role = me?.role;
 
   const [typeTab, setTypeTab] = useState('all');          // all | oil | lot | vessel | shipment
+  const [severity, setSeverity] = useState('all');        // ⬅️ new
   const [status, setStatus]   = useState('all');          // all | <statuses>
   const [q, setQ]             = useState('');
   const [from, setFrom]       = useState('');
@@ -121,7 +162,6 @@ export default function IssuesList() {
   const load = async () => {
     setLoading(true);
     const params = {};
-    if (q) params.q = q;
     if (from) params.from = from.replace('T',' ') + ':00';
     if (to)   params.to   = to.replace('T',' ') + ':00';
     try {
@@ -137,7 +177,7 @@ export default function IssuesList() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, from, to]);
+  }, [from, to]);
 
   // counts for tabs (based on what's actually allowed to the role)
   const counts = useMemo(() => {
@@ -147,20 +187,48 @@ export default function IssuesList() {
     return c;
   }, [allRows, allowedTypes]);
 
+  // counts for severities (respect allowedTypes and current typeTab)
+  const sevCounts = useMemo(() => {
+    const base = (allRows || []).filter(
+      r => allowedTypes.includes(r.type) && (typeTab === 'all' || r.type === typeTab)
+    );
+    const c = { all: base.length, low: 0, medium: 0, high: 0, critical: 0 };
+    for (const r of base) {
+      const sv = (r.severity || '').toLowerCase();
+      if (sv in c) c[sv] += 1;
+    }
+    return c;
+  }, [allRows, allowedTypes, typeTab]);
+
+  // counts for statuses (respect allowedTypes and current typeTab)
+  const statusCounts = useMemo(() => {
+    const base = (allRows || []).filter(
+      r => allowedTypes.includes(r.type) && (typeTab === 'all' || r.type === typeTab)
+    );
+    const c = { all: base.length };
+    for (const s of STATUS_FILTERS) c[s] = 0;
+    for (const r of base) {
+      const st = r.status;
+      if (st && st in c) c[st] += 1;
+    }
+    return c;
+  }, [allRows, allowedTypes, typeTab]);
+
   // rows shown in table (role + user filters)
   const visible = useMemo(() => {
     let rows = (allRows || []).filter(r => allowedTypes.includes(r.type));
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
+    if (severity !== 'all') rows = rows.filter(r => r.severity === severity);
     if (status !== 'all') rows = rows.filter(r => r.status === status);
     if (q.trim()) {
-      const k = q.trim().toLowerCase();
-      rows = rows.filter(r =>
-        (r.title||'').toLowerCase().includes(k) ||
-        (r.description||'').toLowerCase().includes(k)
-      );
+      const terms = q.trim().toLowerCase().split(/\s+/);
+      rows = rows.filter(r => {
+        const hs = buildSearchHaystack(r);
+        return terms.every(t => hs.includes(t));
+      });
     }
     return rows;
-  }, [allRows, allowedTypes, typeTab, status, q]);
+  }, [allRows, allowedTypes, typeTab, severity, status, q]);
 
   // open the new workflow modal with fresh server data
   const openWork = async (row) => {
@@ -201,10 +269,10 @@ export default function IssuesList() {
         <div className="card-head flex items-center gap-2 flex-wrap px-3 py-3">
           <input
             className="input"
-            placeholder="Search title/description"
+            placeholder="Search by title / context"
             value={q}
             onChange={e => setQ(e.target.value)}
-            style={{ minWidth: 400, maxWidth: 600 }}
+            style={{ width: 400 }}
           />
 
           {/* Type tab as a select */}
@@ -212,25 +280,43 @@ export default function IssuesList() {
             className="select"
             value={typeTab}
             onChange={(e) => setTypeTab(e.target.value)}
-            style={{ minWidth: 140, maxWidth: 150 }}
+            style={{ width: 160 }}
           >
-            {TABS.map(t => (
+            <option value="all">All type ({counts.all ?? 0})</option>
+            {TABS.filter(t => t !== 'all').map(t => (
               <option key={t} value={t}>
-                {t[0].toUpperCase()+t.slice(1)} ({counts[t] ?? 0})
+                {t[0].toUpperCase() + t.slice(1)} ({counts[t] ?? 0})
               </option>
             ))}
           </select>
 
-          {/* Status filter */}
+          {/* ✅ Severity filter with counts */}
+          <select
+            className="select"
+            value={severity}
+            onChange={e => setSeverity(e.target.value)}
+            style={{ width: 170 }}
+          >
+            <option value="all">All severity ({sevCounts.all ?? 0})</option>
+            {SEVERITY_FILTERS.map(s => (
+              <option key={s} value={s}>
+                {s[0].toUpperCase() + s.slice(1)} ({sevCounts[s] ?? 0})
+              </option>
+            ))}
+          </select>
+
+          {/* Status filter with counts */}
           <select
             className="select"
             value={status}
             onChange={e => setStatus(e.target.value)}
-            style={{ minWidth: 190, maxWidth: 220 }}
+            style={{ width: 210 }}
           >
-            <option value="all">All status</option>
+            <option value="all">All status ({statusCounts.all ?? 0})</option>
             {STATUS_FILTERS.map(s => (
-              <option key={s} value={s}>{s.replaceAll('_',' ')}</option>
+              <option key={s} value={s}>
+                {s.replaceAll('_',' ')} ({statusCounts[s] ?? 0})
+              </option>
             ))}
           </select>
 
