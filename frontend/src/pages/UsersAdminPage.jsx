@@ -1,5 +1,5 @@
 // frontend/src/pages/UsersAdminPage.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { listUsers, createUser, updateUser, deleteUser } from '../api/adminUsers';
 
 // Keep this list in sync with your backend/DB enum
@@ -21,9 +21,9 @@ export default function UsersAdminPage() {
   async function load() {
     setLoading(true);
     try {
+      // โหลดผู้ใช้ที่ตรงกับคำค้น q ทั้งหมดก่อน แล้วค่อยไปนับ/กรอง role ฝั่ง client
       const data = await listUsers({
         q,
-        role: role === 'all' ? undefined : role,
         limit: 200,
       });
       setRows(Array.isArray(data) ? data : []);
@@ -32,7 +32,24 @@ export default function UsersAdminPage() {
     }
   }
 
-  useEffect(() => { load(); }, [q, role]);
+  // โหลดใหม่เมื่อ q เปลี่ยน (role จะกรองฝั่ง client)
+  useEffect(() => { load(); }, [q]);
+
+  // นับจำนวนผู้ใช้แต่ละ role (นับจาก rows ที่ตรง q แล้ว)
+  const roleCounts = useMemo(() => {
+    const c = { all: (rows || []).length };
+    for (const r of ROLES) c[r] = 0;
+    for (const u of rows || []) {
+      if (u.role && (u.role in c)) c[u.role] += 1;
+    }
+    return c;
+  }, [rows]);
+
+  // แถวที่จะแสดงจริง ตาม role filter ปัจจุบัน
+  const visibleRows = useMemo(() => {
+    if (role === 'all') return rows;
+    return (rows || []).filter(u => u.role === role);
+  }, [rows, role]);
 
   return (
     <div className="space-y-6">
@@ -57,11 +74,13 @@ export default function UsersAdminPage() {
             className="select"
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            style={{ minWidth: 120, maxWidth: 150 }}
+            style={{ minWidth: 150, maxWidth: 180 }}
           >
-            <option value="all">All roles</option>
+            <option value="all">All roles ({roleCounts.all ?? 0})</option>
             {ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <option key={r} value={r}>
+                {r} ({roleCounts[r] ?? 0})
+              </option>
             ))}
           </select>
         </div>
@@ -82,10 +101,10 @@ export default function UsersAdminPage() {
               {loading && (
                 <tr><td colSpan={6} className="muted">Loading…</td></tr>
               )}
-              {!loading && !rows.length && (
+              {!loading && !(visibleRows || []).length && (
                 <tr><td colSpan={6} className="muted">No users</td></tr>
               )}
-              {!loading && rows.map((r) => (
+              {!loading && visibleRows.map((r) => (
                 <tr key={r.id} className="hoverable">
                   <td>#{r.id}</td>
                   <td>{r.username}</td>

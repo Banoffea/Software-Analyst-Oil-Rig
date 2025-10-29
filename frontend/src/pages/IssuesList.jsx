@@ -253,7 +253,19 @@ export default function IssuesList() {
     }
   };
 
-  const TABS = ['all','oil','lot','vessel','shipment'];
+  // สร้างรายการตัวเลือกสำหรับ Type ตาม role
+  const TABS = useMemo(() => {
+    // ถ้า role นั้นเห็นได้มากกว่า 1 ประเภท ให้มีตัวเลือก "all" ด้วย
+    if ((allowedTypes || []).length > 1) return ['all', ...allowedTypes];
+    // ถ้าเห็นได้ประเภทเดียว ไม่ต้องมี "all"
+    return [...allowedTypes];
+  }, [allowedTypes]);
+
+  useEffect(() => {
+    if (!TABS.includes(typeTab)) {
+      setTypeTab(TABS[0]); // ถ้ามี 'all' ก็เป็น all ถ้าไม่มีก็เป็นประเภทเดียวที่อนุญาต
+    }
+  }, [TABS, typeTab]);
 
   return (
     <div className="space-y-6">
@@ -281,6 +293,7 @@ export default function IssuesList() {
             value={typeTab}
             onChange={(e) => setTypeTab(e.target.value)}
             style={{ width: 160 }}
+            disabled={TABS.length === 1}
           >
             <option value="all">All type ({counts.all ?? 0})</option>
             {TABS.filter(t => t !== 'all').map(t => (
