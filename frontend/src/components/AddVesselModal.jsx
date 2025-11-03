@@ -143,12 +143,13 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
               inputMode="numeric"
               min="1"
               step="1"
-              placeholder="e.g. 15000"
+              max="1000000"
+              placeholder="e.g. 25000 bbl (Max 1000000)"
               value={capacity}
               onChange={(e)=>setCapacity(e.target.value)}
               onKeyDown={onCapKeydown}
               required
-              onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
+              onInvalid={e => e.target.setCustomValidity('Please fill in all the information correctly.')}
               onInput={e => e.target.setCustomValidity('')}
             />
           </label>

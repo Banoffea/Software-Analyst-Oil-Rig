@@ -108,6 +108,7 @@ function EditVesselModal({ open, vessel, onClose, onSaved }) {
               type="number"
               min="1"
               step="1"
+              max="1000000"
               value={cap}
               onChange={e=>setCap(e.target.value)}
               onKeyDown={(e)=>{ if (['e','E','+','-','.'].includes(e.key)) e.preventDefault(); }}
@@ -329,6 +330,7 @@ export default function VesselDashboard() {
                 <th style={{width:70}}>ID</th>
                 <th>Name</th>
                 <th>Vessel No</th>
+                <th style={{width:140}}>Capacity</th> {/* ➕ เพิ่มคอลัมน์ */}
                 <th style={{width:120}}>Status</th>
                 <th style={{width:140}}>Speed</th>
                 <th style={{width:120}}>Course</th>
@@ -337,8 +339,8 @@ export default function VesselDashboard() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={8} className="muted">Loading…</td></tr>}
-              {!loading && shown.length === 0 && <tr><td colSpan={8} className="muted">No vessels</td></tr>}
+              {loading && <tr><td colSpan={9} className="muted">Loading…</td></tr>}
+              {!loading && shown.length === 0 && <tr><td colSpan={9} className="muted">No vessels</td></tr>}
 
               {!loading && shown.map(v => {
                 const showDetail = v.status !== 'idle';
@@ -350,6 +352,7 @@ export default function VesselDashboard() {
                     <td>#{v.id}</td>
                     <td>{v.name || '-'}</td>
                     <td>{v.vessel_no || '-'}</td>
+                    <td>{v.capacity != null ? `${Number(v.capacity).toLocaleString()} bbl` : '-'}</td> {/* ➕ ค่า Capacity */}
                     <td><StatusPill status={v.status} /></td>
 
                     <td>
