@@ -1,5 +1,5 @@
 // src/pages/IssuesList.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { listIssues, getIssue, deleteIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
 import IssueWorkModal from '../components/IssueWorkModal';
@@ -77,7 +77,7 @@ function contextText(row) {
   return '-';
 }
 
-// เดิมใช้ในตาราง/ฟิลเตอร์
+// ใช้ในตาราง/ฟิลเตอร์
 const STATUS_FILTERS = [
   'in_progress',
   'need_rework',
@@ -86,12 +86,12 @@ const STATUS_FILTERS = [
   'approved',
 ];
 
-// 🔧 เพิ่ม: กำหนด status ที่ให้เลือกได้ตาม role
+// role → สถานะที่เลือกได้ใน dropdown
 const ROLE_STATUS = {
   production: ['in_progress', 'need_rework', 'approved'],
   captain:    ['in_progress', 'awaiting_fleet_approval', 'approved', 'need_rework'],
   fleet:      ['in_progress', 'awaiting_fleet_approval', 'approved', 'need_rework'],
-  // manager/admin จะ fallback ไปใช้ STATUS_FILTERS (เห็นได้ทั้งหมดตามเดิม)
+  // manager/admin → fallback เป็น STATUS_FILTERS
 };
 
 export default function IssuesList() {
@@ -108,6 +108,23 @@ export default function IssuesList() {
 
   const [workRow, setWorkRow] = useState(null);
 
+  // ===== Refs & handlers for in-field calendar icons =====
+  const fromRef = useRef(null);
+  const toRef   = useRef(null);
+  const openFromPicker = () => {
+    const el = fromRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.focus();
+  };
+  const openToPicker = () => {
+    const el = toRef.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.focus();
+  };
+  // =======================================================
+
   // role-based visibility
   const allowedTypes = useMemo(() => {
     if (role === 'production') return ['oil','lot'];
@@ -115,10 +132,10 @@ export default function IssuesList() {
     return ['oil','lot','vessel','shipment']; // manager/admin
   }, [role]);
 
-  // 🔧 คำนวณตัวเลือก Type จากสิทธิ์ของ role
+  // ตัวเลือก Type จากสิทธิ์ของ role
   const TYPE_OPTIONS = useMemo(() => ['all', ...allowedTypes], [allowedTypes]);
 
-  // 🔧 คำนวณตัวเลือก Status จาก role (+ ใส่ 'all' ไว้ต้นเสมอ)
+  // ตัวเลือก Status จาก role (+ 'all')
   const STATUS_OPTIONS = useMemo(() => {
     const base = ROLE_STATUS[role] ?? STATUS_FILTERS;
     return ['all', ...base];
@@ -127,7 +144,7 @@ export default function IssuesList() {
   const load = async () => {
     setLoading(true);
     const params = {};
-    if (q) params.q = q;
+    // ไม่ส่ง q: ค้นหาใน frontend (title + context)
     if (from) params.from = `${from} 00:00:00`;
     if (to)   params.to   = `${to} 23:59:59`;
     try {
@@ -143,9 +160,9 @@ export default function IssuesList() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, from, to]);
+  }, [from, to]);
 
-  // นับจำนวนเพื่อแสดงบนตัวเลือก type
+  // นับจำนวน per-type (เฉพาะประเภทที่ role เห็น)
   const counts = useMemo(() => {
     const filtered = (allRows || []).filter(r => allowedTypes.includes(r.type));
     const c = { all: filtered.length, oil: 0, lot: 0, vessel: 0, shipment: 0 };
@@ -153,22 +170,36 @@ export default function IssuesList() {
     return c;
   }, [allRows, allowedTypes]);
 
+  // นับจำนวน per-status สำหรับ dropdown (อิง allowedTypes และ type ที่เลือกอยู่)
+  const statusCounts = useMemo(() => {
+    let rows = (allRows || []).filter(r => allowedTypes.includes(r.type));
+    if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
+    const c = { all: rows.length };
+    for (const s of STATUS_FILTERS) c[s] = 0;
+    for (const r of rows) {
+      if (r.status) c[r.status] = (c[r.status] ?? 0) + 1;
+    }
+    return c;
+  }, [allRows, allowedTypes, typeTab]);
+
   // คำนวณรายการที่เห็นในตาราง
   const visible = useMemo(() => {
     let rows = (allRows || []).filter(r => allowedTypes.includes(r.type));
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
     if (status !== 'all') rows = rows.filter(r => r.status === status);
+
     if (q.trim()) {
       const k = q.trim().toLowerCase();
-      rows = rows.filter(r =>
-        (r.title||'').toLowerCase().includes(k) ||
-        (r.description||'').toLowerCase().includes(k)
-      );
+      rows = rows.filter(r => {
+        const title = (r.title || '').toLowerCase();
+        const ctx = contextText(r).toLowerCase();
+        return title.includes(k) || ctx.includes(k);
+      });
     }
     return rows;
   }, [allRows, allowedTypes, typeTab, status, q]);
 
-  // 🔧 กันเคสค่าที่เลือกไว้ไม่อยู่ในตัวเลือก (เช่น role เปลี่ยน)
+  // กันเคสค่าที่เลือกไว้ไม่อยู่ในตัวเลือก (เช่น role เปลี่ยน)
   useEffect(() => {
     if (!TYPE_OPTIONS.includes(typeTab)) setTypeTab('all');
   }, [TYPE_OPTIONS, typeTab]);
@@ -208,61 +239,106 @@ export default function IssuesList() {
       </div>
 
       <div className="card">
-        {/* Toolbar */}
-        <div className="card-head flex items-center gap-2 flex-wrap px-3 py-3">
-          {/* Search */}
-          <input
-            className="input"
-            placeholder="Search title/description"
-            value={q}
-            onChange={e => setQ(e.target.value)}
-            style={{ width: 500 }}
-          />
+        <div className="card-head">
+          {/* ===== Toolbar (Search left | Filters right) ===== */}
+          <div className="toolbar">
+            <div className="search-wrap">
+              <label className="label-muted">Search</label>
+              <input
+                className="input"
+                placeholder="Search by title / context"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+              />
+            </div>
 
-          {/* 🔧 Type dropdown: แสดงเฉพาะประเภทที่ role เห็น */}
-          <select
-            className="select"
-            value={typeTab}
-            onChange={(e) => setTypeTab(e.target.value)}
-            style={{ width: 250 }}
-          >
-            {TYPE_OPTIONS.map(t => (
-              <option key={t} value={t}>
-                {t[0].toUpperCase()+t.slice(1)} ({counts[t] ?? 0})
-              </option>
-            ))}
-          </select>
+            <div className="filters">
+              <div className="field">
+                <label className="label-muted">Type</label>
+                <select
+                  className="select"
+                  value={typeTab}
+                  onChange={(e) => setTypeTab(e.target.value)}
+                >
+                  {TYPE_OPTIONS.map(t => (
+                    <option key={t} value={t}>
+                      {t[0].toUpperCase()+t.slice(1)} ({counts[t] ?? 0})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* 🔧 Status dropdown: แสดงเฉพาะ status ที่ role เลือกได้ */}
-          <select
-            className="select"
-            value={status}
-            onChange={e => setStatus(e.target.value)}
-            style={{ width: 250 }}
-          >
-            {STATUS_OPTIONS.map(s => (
-              <option key={s} value={s}>
-                {s === 'all' ? 'All status' : s.replaceAll('_',' ')}
-              </option>
-            ))}
-          </select>
+              <div className="field">
+                <label className="label-muted">Status</label>
+                <select
+                  className="select"
+                  value={status}
+                  onChange={e => setStatus(e.target.value)}
+                >
+                  {STATUS_OPTIONS.map(s => (
+                    <option key={s} value={s}>
+                      {s === 'all'
+                        ? `All status (${statusCounts.all ?? 0})`
+                        : `${s.replaceAll('_',' ')} (${statusCounts[s] ?? 0})`}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Date range */}
-          <input
-            type="date"
-            className="select"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            style={{ width: 300 }}
-          />
-          <span className="muted">to</span>
-          <input
-            type="date"
-            className="select"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            style={{ width: 300 }}
-          />
+              <div className="field">
+                <label className="label-muted">From</label>
+                <div className="dt2">
+                  <input
+                    ref={fromRef}
+                    type="date"
+                    className="select dt2-input"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="dt2-icon"
+                    onClick={openFromPicker}
+                    aria-label="Pick start date"
+                    title="Pick start date"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="field">
+                <label className="label-muted">To</label>
+                <div className="dt2">
+                  <input
+                    ref={toRef}
+                    type="date"
+                    className="select dt2-input"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="dt2-icon"
+                    onClick={openToPicker}
+                    aria-label="Pick end date"
+                    title="Pick end date"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" />
+                      <path d="M16 2v4M8 2v4M3 10h18" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* ================================================== */}
         </div>
 
         {/* Table */}
@@ -323,6 +399,96 @@ export default function IssuesList() {
           onClose={() => setWorkRow(null)}
         />
       )}
+
+      {/* Scoped styles: toolbar layout + calendar hover */}
+      <style>{CSS_TOOLBAR}</style>
+      <style>{CSS_DT2}</style>
     </div>
   );
 }
+
+const CSS_TOOLBAR = `
+/* กระจาย 5 บล็อกแบบไม่ยืด */
+.toolbar{
+  display:flex;
+  width:100%;
+  justify-content: space-between;  /* ซ้าย/ขวาชนขอบ */
+  align-items:end;
+  flex-wrap:wrap;
+  column-gap:24px;                 /* เว้นคอลัมน์ตอนพับบรรทัด */
+  row-gap:12px;
+}
+
+/* ดึง 4 fields ใน .filters ขึ้นมาเป็นลูกของ .toolbar */
+.filters{ display: contents; }
+
+/* 🔒 ล็อกให้ทั้ง 5 บล็อกกว้างเท่ากัน (ไม่ยืด) */
+.search-wrap{
+  flex: 0 0 450px;   /* เดิม 240px → เพิ่มเป็น 360px */
+  max-width: 360px;
+}
+.field{
+  flex: 0 0 240px;
+  max-width: 240px;
+}
+
+.search-wrap .input{ width:100%; }
+.field .select{ width:100%; }
+
+.label-muted{
+  display:block;
+  font-size:12px;
+  color: var(--muted, #92B0C9);
+  margin-bottom:6px;
+}
+
+/* เมื่อแคบลง: เลิก space-between เพื่อไม่ให้แถวสุดท้ายเว้นกว้างเกินไป */
+@media (max-width: 1280px){
+  .toolbar{
+    justify-content:flex-start;    /* ใช้ gap ตามปกติ */
+  }
+}
+@media (max-width: 720px){
+  .search-wrap, .field{
+    flex: 1 1 100%;                /* แถวเดียว เต็มบล็อก */
+    max-width: 100%;
+  }
+}
+`;
+
+
+
+/* Calendar icon styles (เหมือน OilDashboard) */
+const CSS_DT2 = `
+.dt2 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+}
+.dt2-input {
+  padding-right: 44px !important;
+  width: 100%;
+}
+.dt2-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  color: var(--muted, #92B0C9);
+  transition: color .15s ease, transform .15s ease;
+}
+.dt2-icon:hover {
+  color: var(--brand, #138AEC);
+  transform: translateY(-50%) scale(1.05);
+}
+/* ซ่อน indicator เดิมของ browser */
+.dt2-input::-webkit-calendar-picker-indicator { opacity: 0; }
+.dt2-input::-ms-clear { display: none; }
+`;
+
