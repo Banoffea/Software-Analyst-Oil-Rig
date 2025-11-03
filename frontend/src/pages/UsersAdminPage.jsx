@@ -233,6 +233,7 @@ function UserModal({ row, onClose, onSaved }) {
               <input
                 type="password"
                 className="input w-full"
+                placeholder={row ? 'Leave blank to keep current password' : ''}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required={!row}

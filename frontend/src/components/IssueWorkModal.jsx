@@ -20,19 +20,17 @@ export default function IssueWorkModal({ row, role, onClose, onChanged }) {
 
   // ===== Permissions by role/type =====
   const roleCanSubmit = useMemo(() => {
-    if (role === 'manager') return true;
     if (role === 'production') return row.type === 'oil' || row.type === 'lot';
-    if (role === 'fleet' || role === 'captain') return row.type === 'vessel' || row.type === 'shipment';
-    return false; // admin/others = view only
+    if (role === 'captain')    return row.type === 'vessel' || row.type === 'shipment';
+    return false; // admin, manager, fleet, others => view-only
   }, [role, row.type]);
 
   // editable only when status is editable + role allowed + not admin
   const editable = useMemo(
     () =>
       (row.status === 'in_progress' || row.status === 'need_rework') &&
-      role !== 'admin' &&
       roleCanSubmit,
-    [row.status, role, roleCanSubmit]
+    [row.status, roleCanSubmit]
   );
 
   const canFleetApprove = row.status === 'awaiting_fleet_approval' && role === 'fleet';

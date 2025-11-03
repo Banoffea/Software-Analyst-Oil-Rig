@@ -19,20 +19,26 @@ export default function RigsAdminPage() {
   const [showModal, setShowModal] = useState(false);
   const [editRow, setEditRow] = useState(null);
 
+  // ✅ นับแบบ GLOBAL แยกจากรายการที่แสดง
+  const [globalCounts, setGlobalCounts] = useState({ all: 0, online: 0, offline: 0, maintenance: 0 });
+  const computeStatusCounts = (list=[]) => {
+    const c = { all: list.length, online: 0, offline: 0, maintenance: 0 };
+    for (const r of list) if (r?.status && c.hasOwnProperty(r.status)) c[r.status]++;
+    return c;
+  };
+
   async function load() {
     setLoading(true);
     try {
-      const data = await listRigs({ q: q || undefined, status: status==='all' ? undefined : status, limit: 500 });
-      setRows(Array.isArray(data) ? data : []);
+      const [filtered, all] = await Promise.all([
+        listRigs({ q: q || undefined, status: status==='all' ? undefined : status, limit: 500 }),
+        listRigs({ limit: 10000 }) // ใช้สำหรับนับจำนวนรวมบนปุ่ม
+      ]);
+      setRows(Array.isArray(filtered) ? filtered : []);
+      setGlobalCounts(computeStatusCounts(Array.isArray(all) ? all : []));
     } finally { setLoading(false); }
   }
   useEffect(()=>{ load(); }, [q, status]);
-
-  const counts = useMemo(() => {
-    const c = { all: rows.length, online:0, offline:0, maintenance:0 };
-    for (const r of rows) c[r.status] = (c[r.status]||0)+1;
-    return c;
-  }, [rows]);
 
   const visible = rows;
 
@@ -43,7 +49,7 @@ export default function RigsAdminPage() {
     setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:true } : x));
     try {
       await updateRig(row.id, { status: s });
-      await load(); // sync จาก server
+      await load(); // sync จาก server และอัปเดต globalCounts
     } catch (e) {
       const msg = e?.response?.data?.message || 'Update status failed';
       alert(msg);
@@ -74,7 +80,7 @@ export default function RigsAdminPage() {
                 className={`btn ${status===t ? 'btn-primary' : 'btn-ghost'}`}
                 onClick={()=>setStatus(t)}
               >
-                {t[0].toUpperCase()+t.slice(1)} <span className="muted ml-1">({counts[t]||0})</span>
+                {t[0].toUpperCase()+t.slice(1)} <span className="muted ml-1">({globalCounts[t]||0})</span>
               </button>
             ))}
           </div>
@@ -272,24 +278,31 @@ function RigModal({ row, onClose, onSaved }) {
   const [status, setStatus] = useState(row?.status || 'online');
   const [busy, setBusy] = useState(false);
 
-  const toNumOrNull = (v) => {
-    const t = String(v ?? '').trim();
-    if (!t) return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
+  const formRef = useRef(null);
+
+  const toNum = (v) => {
+    const n = Number(String(v ?? '').trim());
+    return Number.isFinite(n) ? n : null; // (จะไม่ถึงจุดนี้ถ้า validation ผ่าน)
   };
 
   async function submit(e){
     e.preventDefault();
+
+    // ถ้าไม่ผ่าน constraint (required/min/max/ฯลฯ) ให้โชว์ bubble แล้วหยุด
+    if (formRef.current && !formRef.current.checkValidity()) {
+      formRef.current.reportValidity();
+      return;
+    }
+
     setBusy(true);
     try {
       const payload = {
         rig_code: String(rig_code).trim(),
         name: String(name).trim(),
-        location: String(location).trim() || null,   // optional
-        lat: toNumOrNull(lat),                       // optional
-        lon: toNumOrNull(lon),                       // optional
-        capacity: toNumOrNull(capacity),             // optional
+        location: String(location).trim(), // required แล้ว
+        lat: toNum(lat),
+        lon: toNum(lon),
+        capacity: toNum(capacity),
         status
       };
       if (row) await updateRig(row.id, payload);
@@ -300,12 +313,24 @@ function RigModal({ row, onClose, onSaved }) {
     } finally { setBusy(false); }
   }
 
+  const onNumKeydownNoSign = (e) => {
+    if (['e', 'E', '+', '-', '.'].includes(e.key)) e.preventDefault();
+  };
+
+  // ⛔️ กันการ paste ที่ไม่ใช่ตัวเลขล้วน
+  const onPasteDigitsOnly = (e) => {
+    const text = e.clipboardData?.getData('text') ?? '';
+    if (/[^0-9]/.test(text)) e.preventDefault();
+  };
+  
   return (
     <div className="modal-backdrop" onMouseDown={(e)=>{ if (e.target===e.currentTarget) onClose?.(); }}>
       <div className="modal" onMouseDown={e=>e.stopPropagation()}>
         <h3 className="modal-title">{row ? 'Edit rig' : 'Create rig'}</h3>
-        <form onSubmit={submit} className="space-y-3">
+
+        <form ref={formRef} onSubmit={submit} className="space-y-3">
           <div className="grid md:grid-cols-2 gap-3">
+
             <label className="block">
               <div className="muted text-xs mb-1">Rig code</div>
               <input
@@ -315,7 +340,7 @@ function RigModal({ row, onClose, onSaved }) {
                 onChange={e=>setRigCode(e.target.value)}
                 required
                 disabled={!!row}
-                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
                 onInput={e => e.target.setCustomValidity("")}
               />
             </label>
@@ -328,56 +353,76 @@ function RigModal({ row, onClose, onSaved }) {
                 value={name}
                 onChange={e=>setName(e.target.value)}
                 required
-                onInvalid={e => e.target.setCustomValidity("Please fill in all the information.")}
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
                 onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
             <label className="block md:col-span-2">
-              <div className="muted text-xs mb-1">Location <span className="muted">(optional)</span></div>
+              <div className="muted text-xs mb-1">Location</div>
               <input
                 className="input w-full"
                 placeholder="e.g. Gulf of Thailand"
                 value={location}
                 onChange={e=>setLocation(e.target.value)}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
             <label className="block">
-              <div className="muted text-xs mb-1">Lat <span className="muted">(optional)</span></div>
+              <div className="muted text-xs mb-1">Lat</div>
               <input
                 className="input w-full"
-                placeholder="e.g. 13.111110"
+                type="number"
+                step="any"
+                min="-90"
+                max="90"
+                placeholder="e.g. 13.111110 (Min -90 Max 90)"
                 value={lat}
                 onChange={e=>setLat(e.target.value)}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
             <label className="block">
-              <div className="muted text-xs mb-1">Lon <span className="muted">(optional)</span></div>
+              <div className="muted text-xs mb-1">Lon</div>
               <input
                 className="input w-full"
-                placeholder="e.g. 99.124100"
+                type="number"
+                step="any"
+                min="-180"
+                max="180"
+                placeholder="e.g. 99.124100 (Min -180 Max 180)"
                 value={lon}
                 onChange={e=>setLon(e.target.value)}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
             </label>
 
             <label className="block">
-              <div className="muted text-xs mb-1">Capacity <span className="muted">(optional)</span></div>
+              <div className="muted text-xs mb-1">Capacity</div>
               <input
                 className="input w-full"
-                placeholder="e.g. 50000"
+                type="number"
+                inputMode="numeric"
+                step="1"
+                min="0"
+                max="1000000"
+                placeholder="e.g. 50000 (Min 0 Max 1000000)"
                 value={capacity}
-                onChange={e=>setCapacity(e.target.value)}
+                onChange={(e)=>setCapacity(e.target.value)}
+                onKeyDown={onNumKeydownNoSign}
+                onPaste={onPasteDigitsOnly}
+                required
+                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
+                onInput={e => e.target.setCustomValidity("")}
               />
-            </label>
-
-            <label className="block">
-              <div className="muted text-xs mb-1">Status</div>
-              <select className="select w-full" value={status} onChange={e=>setStatus(e.target.value)}>
-                {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
             </label>
           </div>
 

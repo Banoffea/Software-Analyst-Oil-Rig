@@ -1,3 +1,4 @@
+// src/pages/IssuesList.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { listIssues, getIssue, deleteIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
@@ -37,9 +38,9 @@ function SeverityBadge({ v }) {
 
 function StatusBadge({ v }) {
   const map = {
-    open:'#3b82f6',                 // legacy
+    open:'#3b82f6',
     in_progress:'#f59e0b',
-    waiting_approval:'#a855f7',     // legacy
+    waiting_approval:'#a855f7',
     need_rework:'#ef4444',
     approved:'#10b981',
     awaiting_manager_approval:'#2563eb',
@@ -76,7 +77,6 @@ function contextText(row) {
   return '-';
 }
 
-/** Statuses available in the FILTER (legacy values removed) */
 const STATUS_FILTERS = [
   'in_progress',
   'need_rework',
@@ -89,15 +89,15 @@ export default function IssuesList() {
   const { me } = useAuth();
   const role = me?.role;
 
-  const [typeTab, setTypeTab] = useState('all');          // all | oil | lot | vessel | shipment
-  const [status, setStatus]   = useState('all');          // all | <statuses>
+  const [typeTab, setTypeTab] = useState('all');
+  const [status, setStatus]   = useState('all');
   const [q, setQ]             = useState('');
-  const [from, setFrom]       = useState('');
-  const [to, setTo]           = useState('');
+  const [from, setFrom]       = useState(''); // YYYY-MM-DD
+  const [to, setTo]           = useState(''); // YYYY-MM-DD
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [workRow, setWorkRow] = useState(null);           // data for IssueWorkModal
+  const [workRow, setWorkRow] = useState(null);
 
   // role-based visibility
   const allowedTypes = useMemo(() => {
@@ -110,8 +110,8 @@ export default function IssuesList() {
     setLoading(true);
     const params = {};
     if (q) params.q = q;
-    if (from) params.from = from.replace('T',' ') + ':00';
-    if (to)   params.to   = to.replace('T',' ') + ':00';
+    if (from) params.from = `${from} 00:00:00`;
+    if (to)   params.to   = `${to} 23:59:59`;
     try {
       const data = await listIssues(params);
       setAllRows(Array.isArray(data) ? data : []);
@@ -127,7 +127,6 @@ export default function IssuesList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, from, to]);
 
-  // counts for tabs (based on what's actually allowed to the role)
   const counts = useMemo(() => {
     const filtered = (allRows || []).filter(r => allowedTypes.includes(r.type));
     const c = { all: filtered.length, oil: 0, lot: 0, vessel: 0, shipment: 0 };
@@ -135,7 +134,6 @@ export default function IssuesList() {
     return c;
   }, [allRows, allowedTypes]);
 
-  // rows shown in table (role + user filters)
   const visible = useMemo(() => {
     let rows = (allRows || []).filter(r => allowedTypes.includes(r.type));
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
@@ -150,19 +148,17 @@ export default function IssuesList() {
     return rows;
   }, [allRows, allowedTypes, typeTab, status, q]);
 
-  // open the new workflow modal with fresh server data
   const openWork = async (row) => {
     try {
       const fresh = await getIssue(row.id);
       setWorkRow(fresh);
-    } catch (e) {
+    } catch {
       alert('Failed to open report');
     }
   };
 
-  // delete any issue (except approved)
   const handleDelete = async (row) => {
-    if (row.status === 'approved') return; // double guard (UI ซ่อนไปแล้ว)
+    if (row.status === 'approved') return;
     if (!window.confirm(`Delete report #${row.id}?`)) return;
     try {
       await deleteIssue(row.id);
@@ -187,20 +183,22 @@ export default function IssuesList() {
       <div className="card">
         {/* Toolbar */}
         <div className="card-head flex items-center gap-2 flex-wrap px-3 py-3">
+          {/* ย่อ Search ให้แคบลง */}
           <input
             className="input"
             placeholder="Search title/description"
             value={q}
             onChange={e => setQ(e.target.value)}
-            style={{ minWidth: 400, maxWidth: 600 }}
+            style={{ width: 500 }}
           />
 
-          {/* Type tab as a select */}
+          {/* ย่อ Type */}
           <select
             className="select"
             value={typeTab}
             onChange={(e) => setTypeTab(e.target.value)}
-            style={{ minWidth: 140, maxWidth: 150 }}
+            
+            style={{ width: 250 }}
           >
             {TABS.map(t => (
               <option key={t} value={t}>
@@ -209,12 +207,12 @@ export default function IssuesList() {
             ))}
           </select>
 
-          {/* Status filter */}
+          {/* ย่อ Status */}
           <select
             className="select"
             value={status}
             onChange={e => setStatus(e.target.value)}
-            style={{ minWidth: 190, maxWidth: 220 }}
+            style={{ width: 250 }}
           >
             <option value="all">All status</option>
             {STATUS_FILTERS.map(s => (
@@ -222,20 +220,21 @@ export default function IssuesList() {
             ))}
           </select>
 
+          {/* ย่อช่องวันที่ From/To */}
           <input
-            type="datetime-local"
-            className="input"
+            type="date"
+            className="select"
             value={from}
-            onChange={e => setFrom(e.target.value)}
-            style={{ maxWidth: 200 }}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ width: 300 }}
           />
           <span className="muted">to</span>
           <input
-            type="datetime-local"
-            className="input"
+            type="date"
+            className="select"
             value={to}
-            onChange={e => setTo(e.target.value)}
-            style={{ maxWidth: 200 }}
+            onChange={(e) => setTo(e.target.value)}
+            style={{ width: 300 }}
           />
         </div>
 
@@ -288,7 +287,7 @@ export default function IssuesList() {
         </div>
       </div>
 
-      {/* New workflow modal */}
+      {/* Work modal */}
       {workRow && (
         <IssueWorkModal
           row={workRow}
