@@ -1,5 +1,5 @@
 // src/pages/IssuesList.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { listIssues, getIssue, deleteIssue } from '../api/issues';
 import { useAuth } from '../utils/auth.jsx';
 import IssueWorkModal from '../components/IssueWorkModal';
@@ -89,8 +89,9 @@ export default function IssuesList() {
   const { me } = useAuth();
   const role = me?.role;
 
-  const [typeTab, setTypeTab] = useState('all');
-  const [status, setStatus]   = useState('all');
+  const [typeTab, setTypeTab] = useState('all');          // all | oil | lot | vessel | shipment
+  const [severity, setSeverity] = useState('all');        // ⬅️ new
+  const [status, setStatus]   = useState('all');          // all | <statuses>
   const [q, setQ]             = useState('');
   const [from, setFrom]       = useState(''); // YYYY-MM-DD
   const [to, setTo]           = useState(''); // YYYY-MM-DD
@@ -98,6 +99,17 @@ export default function IssuesList() {
   const [loading, setLoading] = useState(true);
 
   const [workRow, setWorkRow] = useState(null);
+
+  // Refs + helper for in-field calendar icon
+  const fromRef = useRef(null);
+  const toRef   = useRef(null);
+
+  const openPicker = (ref) => {
+    const el = ref?.current;
+    if (!el) return;
+    if (typeof el.showPicker === 'function') el.showPicker();
+    else el.focus();
+  };
 
   // role-based visibility
   const allowedTypes = useMemo(() => {
@@ -125,7 +137,7 @@ export default function IssuesList() {
     const t = setInterval(load, POLL_MS);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, from, to]);
+  }, [from, to]);
 
   const counts = useMemo(() => {
     const filtered = (allRows || []).filter(r => allowedTypes.includes(r.type));
@@ -134,19 +146,48 @@ export default function IssuesList() {
     return c;
   }, [allRows, allowedTypes]);
 
+  // counts for severities (respect allowedTypes and current typeTab)
+  const sevCounts = useMemo(() => {
+    const base = (allRows || []).filter(
+      r => allowedTypes.includes(r.type) && (typeTab === 'all' || r.type === typeTab)
+    );
+    const c = { all: base.length, low: 0, medium: 0, high: 0, critical: 0 };
+    for (const r of base) {
+      const sv = (r.severity || '').toLowerCase();
+      if (sv in c) c[sv] += 1;
+    }
+    return c;
+  }, [allRows, allowedTypes, typeTab]);
+
+  // counts for statuses (respect allowedTypes and current typeTab)
+  const statusCounts = useMemo(() => {
+    const base = (allRows || []).filter(
+      r => allowedTypes.includes(r.type) && (typeTab === 'all' || r.type === typeTab)
+    );
+    const c = { all: base.length };
+    for (const s of STATUS_FILTERS) c[s] = 0;
+    for (const r of base) {
+      const st = r.status;
+      if (st && st in c) c[st] += 1;
+    }
+    return c;
+  }, [allRows, allowedTypes, typeTab]);
+
+  // rows shown in table (role + user filters)
   const visible = useMemo(() => {
     let rows = (allRows || []).filter(r => allowedTypes.includes(r.type));
     if (typeTab !== 'all') rows = rows.filter(r => r.type === typeTab);
+    if (severity !== 'all') rows = rows.filter(r => r.severity === severity);
     if (status !== 'all') rows = rows.filter(r => r.status === status);
     if (q.trim()) {
-      const k = q.trim().toLowerCase();
-      rows = rows.filter(r =>
-        (r.title||'').toLowerCase().includes(k) ||
-        (r.description||'').toLowerCase().includes(k)
-      );
+      const terms = q.trim().toLowerCase().split(/\s+/);
+      rows = rows.filter(r => {
+        const hs = buildSearchHaystack(r);
+        return terms.every(t => hs.includes(t));
+      });
     }
     return rows;
-  }, [allRows, allowedTypes, typeTab, status, q]);
+  }, [allRows, allowedTypes, typeTab, severity, status, q]);
 
   const openWork = async (row) => {
     try {
@@ -169,7 +210,19 @@ export default function IssuesList() {
     }
   };
 
-  const TABS = ['all','oil','lot','vessel','shipment'];
+  // สร้างรายการตัวเลือกสำหรับ Type ตาม role
+  const TABS = useMemo(() => {
+    // ถ้า role นั้นเห็นได้มากกว่า 1 ประเภท ให้มีตัวเลือก "all" ด้วย
+    if ((allowedTypes || []).length > 1) return ['all', ...allowedTypes];
+    // ถ้าเห็นได้ประเภทเดียว ไม่ต้องมี "all"
+    return [...allowedTypes];
+  }, [allowedTypes]);
+
+  useEffect(() => {
+    if (!TABS.includes(typeTab)) {
+      setTypeTab(TABS[0]); // ถ้ามี 'all' ก็เป็น all ถ้าไม่มีก็เป็นประเภทเดียวที่อนุญาต
+    }
+  }, [TABS, typeTab]);
 
   return (
     <div className="space-y-6">
@@ -186,7 +239,7 @@ export default function IssuesList() {
           {/* ย่อ Search ให้แคบลง */}
           <input
             className="input"
-            placeholder="Search title/description"
+            placeholder="Search by title / context"
             value={q}
             onChange={e => setQ(e.target.value)}
             style={{ width: 500 }}
@@ -200,42 +253,105 @@ export default function IssuesList() {
             
             style={{ width: 250 }}
           >
-            {TABS.map(t => (
+            <option value="all">All type ({counts.all ?? 0})</option>
+            {TABS.filter(t => t !== 'all').map(t => (
               <option key={t} value={t}>
-                {t[0].toUpperCase()+t.slice(1)} ({counts[t] ?? 0})
+                {t[0].toUpperCase() + t.slice(1)} ({counts[t] ?? 0})
               </option>
             ))}
           </select>
 
-          {/* ย่อ Status */}
+          {/* ✅ Severity filter with counts */}
+          <select
+            className="select"
+            value={severity}
+            onChange={e => setSeverity(e.target.value)}
+            style={{ width: 170 }}
+          >
+            <option value="all">All severity ({sevCounts.all ?? 0})</option>
+            {SEVERITY_FILTERS.map(s => (
+              <option key={s} value={s}>
+                {s[0].toUpperCase() + s.slice(1)} ({sevCounts[s] ?? 0})
+              </option>
+            ))}
+          </select>
+
+          {/* Status filter with counts */}
           <select
             className="select"
             value={status}
             onChange={e => setStatus(e.target.value)}
             style={{ width: 250 }}
           >
-            <option value="all">All status</option>
+            <option value="all">All status ({statusCounts.all ?? 0})</option>
             {STATUS_FILTERS.map(s => (
-              <option key={s} value={s}>{s.replaceAll('_',' ')}</option>
+              <option key={s} value={s}>
+                {s.replaceAll('_',' ')} ({statusCounts[s] ?? 0})
+              </option>
             ))}
           </select>
 
-          {/* ย่อช่องวันที่ From/To */}
-          <input
-            type="date"
-            className="select"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-            style={{ width: 300 }}
-          />
+          {/* From with in-field calendar icon (scoped CSS) */}
+          <div className="dt2">
+            <input
+              ref={fromRef}
+              type="datetime-local"
+              className="input dt2-input"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="dt2-icon"
+              onClick={() => openPicker(fromRef)}
+              aria-label="Pick from date & time"
+              title="Pick date & time"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18" height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor" strokeWidth="2"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+            </button>
+          </div>
+
           <span className="muted">to</span>
-          <input
-            type="date"
-            className="select"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            style={{ width: 300 }}
-          />
+
+          {/* To with in-field calendar icon (scoped CSS) */}
+          <div className="dt2">
+            <input
+              ref={toRef}
+              type="datetime-local"
+              className="input dt2-input"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="dt2-icon"
+              onClick={() => openPicker(toRef)}
+              aria-label="Pick to date & time"
+              title="Pick date & time"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18" height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor" strokeWidth="2"
+              >
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Table */}
@@ -296,6 +412,51 @@ export default function IssuesList() {
           onClose={() => setWorkRow(null)}
         />
       )}
+
+      {/* ===== Scoped styles for in-field calendar icon ===== */}
+      <style>{CSS_DT2}</style>
     </div>
   );
 }
+
+/* Scoped CSS */
+const CSS_DT2 = `
+/* wrapper ของช่อง datetime-local */
+.dt2 {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* เพิ่มช่องว่างขวาให้พอสำหรับไอคอน */
+.dt2-input {
+  padding-right: 44px !important;
+  min-width: 200px;
+}
+
+/* ปุ่มไอคอนอยู่ "ข้างใน" ช่อง */
+.dt2-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  color: var(--muted, #92B0C9);
+}
+
+.dt2-icon:hover {
+  color: var(--brand, #138AEC);
+}
+
+/* ซ่อน calendar indicator ของ browser เพื่อใช้ไอคอนเราแทน */
+.dt2-input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+/* ป้องกันไอคอนโดนบังในบาง browser ที่มี padding/outline แปลก ๆ */
+.dt2-input::-ms-clear { display: none; }
+`;

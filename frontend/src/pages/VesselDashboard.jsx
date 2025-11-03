@@ -317,7 +317,7 @@ export default function VesselDashboard() {
               placeholder="Search by name / vessel no / IMO"
               value={q}
               onChange={e=>setQ(e.target.value)}
-              style={{minWidth:280}}
+              style={{minWidth:272}}
             />
           </div>
         </div>

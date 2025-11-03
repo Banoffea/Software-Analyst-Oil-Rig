@@ -39,7 +39,7 @@ export default function IssueModal({
   defaultVesselPosId = null,
   defaultShipmentId = null,
   lockType = false,
-  defaultTitle = "",
+  defaultTitle = "", // จะถูก "เมิน" แล้ว (ไม่ auto-fill)
 }) {
   const { me } = useAuth();
   const isAdmin = me?.role === "admin"; // ⬅️ กัน admin ไม่ให้รายงาน
@@ -55,8 +55,8 @@ export default function IssueModal({
   const [vposId, setVposId] = useState(defaultVesselPosId ?? "");
   const [shipmentId, setShipmentId] = useState(defaultShipmentId ?? "");
 
-  const [severity, setSeverity] = useState("low");
-  const [title, setTitle] = useState(defaultTitle || "");
+  const [severity, setSeverity] = useState("");
+  const [title, setTitle] = useState("");             // ⬅️ ไม่มี default title แล้ว
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
   const [triedSubmit, setTriedSubmit] = useState(false);
@@ -82,19 +82,12 @@ export default function IssueModal({
     setVesselId(defaultVesselId ?? "");
     setVposId(defaultVesselPosId ?? "");
     setShipmentId(defaultShipmentId ?? "");
-    setSeverity("low");
+    setSeverity("");
     setDesc("");
     setTriedSubmit(false);
     setAnchorAt(nowLocalForInput());
-
-    const seeded = defaultTitle || makeAutoTitle(defaultType, {
-      shipmentId: defaultShipmentId ?? "",
-      vesselId: defaultVesselId ?? "",
-      lotId: defaultLotId ?? "",
-      rigId: defaultRigId ?? "",
-    });
-    setTitle(seeded);
-    setTitleTouched(Boolean(defaultTitle));
+    setTitle("");                 // ⬅️ reset เป็นค่าว่างเสมอ
+    setTitleTouched(false);       // ⬅️ ไม่ถือว่าผู้ใช้เคยแก้
 
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -111,14 +104,8 @@ export default function IssueModal({
     defaultVesselId,
     defaultVesselPosId,
     defaultShipmentId,
-    defaultTitle,
+    defaultTitle, // อยู่ใน deps ได้ แต่จะไม่ถูกใช้
   ]);
-
-  // auto title until user types
-  useEffect(() => {
-    if (!open || titleTouched) return;
-    setTitle(makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId }));
-  }, [open, titleTouched, type, shipmentId, vesselId, lotId, rigId]);
 
   useEffect(() => {
     if (!open) return;
@@ -158,7 +145,11 @@ export default function IssueModal({
     const descTrimmed = (desc || "").trim();
     if (!descTrimmed) {
       descRef.current?.focus();
-      // alert("Please enter a description.");
+      return;
+    }
+
+    if (!severity) {
+      alert("Please select severity.");
       return;
     }
 
@@ -227,7 +218,8 @@ export default function IssueModal({
               </label>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
+                  <option value="" disabled hidden>-- Select severity --</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -249,7 +241,8 @@ export default function IssueModal({
               </div>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
+                  <option value="" disabled hidden>-- Select severity --</option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -399,13 +392,13 @@ export default function IssueModal({
                 setTitleTouched(true);
               }}
               required
-              placeholder={makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
+              placeholder={"e.g. " + makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
             />
           </label>
 
           {/* Description + error message */}
           <label className="f">
-            <span>Description <span className="muted">(required)</span></span>
+            <span>Description</span>
             <textarea
               ref={descRef}
               className={`in ${showDescError ? "error" : ""}`}
