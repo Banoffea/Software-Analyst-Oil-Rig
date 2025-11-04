@@ -8,8 +8,9 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
   const [capacity, setCapacity] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const firstRef = useRef(null);
-  const capRef = useRef(null);
+  const firstRef  = useRef(null);
+  const vesselRef = useRef(null);
+  const capRef    = useRef(null);
 
   // keep latest onClose for ESC
   const onCloseRef = useRef(onClose);
@@ -55,19 +56,17 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
 
     // HTML5 required bubbles for empty fields
     if (!req(name) || !req(vesselNo) || !req(capacity)) {
-      // let browser show which field is missing
       if (!req(name)) firstRef.current?.reportValidity?.();
-      else if (!req(vesselNo)) e.currentTarget.querySelector('#avm-vessel-no')?.reportValidity?.();
+      else if (!req(vesselNo)) vesselRef.current?.reportValidity?.();
       else capRef.current?.reportValidity?.();
       return;
     }
 
-    // extra check for positive integer (show as browser bubble)
+    // extra check for positive integer (browser bubble)
     if (!isPositiveInt(capacity)) {
       if (capRef.current) {
         capRef.current.setCustomValidity('Capacity must be a positive integer');
         capRef.current.reportValidity();
-        // clear after showing bubble, so next input can revalidate
         setTimeout(() => capRef.current?.setCustomValidity(''), 0);
       }
       return;
@@ -84,13 +83,34 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
       onCreated?.();
       onClose?.();
     } catch (err) {
-      // API error—surface as a browser bubble on capacity (still no inline text)
-      const msg = err?.response?.data?.message || 'Create vessel failed';
-      if (capRef.current) {
-        capRef.current.setCustomValidity(msg);
-        capRef.current.reportValidity();
-        setTimeout(() => capRef.current?.setCustomValidity(''), 0);
+      const r   = err?.response;
+      const b   = r?.data || {};
+      const raw = [
+        b.message,
+        b.error,
+        Array.isArray(b.errors) && b.errors[0]?.message,
+        err?.message,
+      ].filter(Boolean).join(' | ');
+
+      // ครอบคลุมเคสซ้ำยอดนิยม
+      // - HTTP 409
+      // - MySQL: Duplicate entry (errno 1062)
+      // - Postgres: unique_violation (23505)
+      // - SQL Server: 2627/2601
+      // - SQLite: UNIQUE constraint failed
+      // - หรือ backend ตอบ "DB error" แต่ความจริงเป็น unique duplicate → บังคับแปลข้อความให้ผู้ใช้เข้าใจ
+      const isDup =
+        r?.status === 409 ||
+        /duplicate|already\s*exist|unique|duplicate entry|UNIQUE constraint|23505|1062|2627|2601/i.test(raw) ||
+        /db\s*error/i.test(raw);
+
+      if (isDup) {
+        window.alert('Vessel No already exists');
+        vesselRef.current?.focus();
+        return;
       }
+
+      window.alert(raw || 'Create vessel failed');
     } finally {
       setBusy(false);
     }
@@ -107,6 +127,7 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
           <label className="block">
             <div className="muted text-xs mb-1">Vessel No</div>
             <input
+              ref={vesselRef}
               id="avm-vessel-no"
               className="input w-full"
               placeholder="e.g. V11"
@@ -118,20 +139,20 @@ export default function AddVesselModal({ open, onClose, onCreated }) {
             />
           </label>
 
-        <label className="block">
-          <div className="muted text-xs mb-1">Vessel name</div>
-          <input
-            ref={firstRef}
-            id="avm-name"
-            className="input w-full"
-            placeholder="e.g. Poseidon"
-            value={name}
-            onChange={(e)=>setName(e.target.value)}
-            required
-            onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
-            onInput={e => e.target.setCustomValidity('')}
-          />
-        </label>
+          <label className="block">
+            <div className="muted text-xs mb-1">Vessel name</div>
+            <input
+              ref={firstRef}
+              id="avm-name"
+              className="input w-full"
+              placeholder="e.g. Poseidon"
+              value={name}
+              onChange={(e)=>setName(e.target.value)}
+              required
+              onInvalid={e => e.target.setCustomValidity('Please fill in all the information.')}
+              onInput={e => e.target.setCustomValidity('')}
+            />
+          </label>
 
           <label className="block">
             <div className="muted text-xs mb-1">Capacity (bbl)</div>

@@ -412,9 +412,9 @@ function RigModal({ row, onClose, onSaved }) {
                 type="number"
                 inputMode="numeric"
                 step="1"
-                min="0"
-                max="1000000"
-                placeholder="e.g. 50000 (Min 0 Max 1000000)"
+                min="1"
+                max="10000000"
+                placeholder="e.g. 50000 (Min 1 Max 10000000)"
                 value={capacity}
                 onChange={(e)=>setCapacity(e.target.value)}
                 onKeyDown={onNumKeydownNoSign}
