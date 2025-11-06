@@ -10,6 +10,79 @@ function fmt(ts) {
   return String(ts).replace('T', ' ').slice(0, 19);
 }
 
+/* ==== Lightweight global toast (bottom-right, success style) ==== */
+function ensureToast(message, duration = 2500) {
+  if (typeof window !== 'undefined' && window.showGlobalToast) {
+    window.showGlobalToast(message, duration);
+    return;
+  }
+  let container = document.getElementById('itoast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'itoast-container';
+    container.setAttribute('role', 'status');
+    container.setAttribute('aria-live', 'polite');
+    Object.assign(container.style, {
+      position: 'fixed',
+      right: '16px',
+      bottom: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: '2147483647',
+    });
+    document.body.appendChild(container);
+  }
+  const item = document.createElement('div');
+  Object.assign(item.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    background: '#16a34a',
+    color: '#FFFFFF',
+    border: '1px solid #16a34a',
+    borderRadius: '12px',
+    padding: '10px 12px',
+    boxShadow: '0 10px 30px rgba(0,0,0,.25)',
+    fontSize: '14px',
+    opacity: '0',
+    transform: 'translateY(6px)',
+    transition: 'opacity .18s ease, transform .18s ease',
+  });
+  const icon = document.createElement('span');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.95"></circle>
+      <path d="M6 10.2l2.2 2.2L14 6.9" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+  const text = document.createElement('span');
+  text.textContent = message;
+  item.appendChild(icon);
+  item.appendChild(text);
+  container.appendChild(item);
+  requestAnimationFrame(() => {
+    item.style.opacity = '1';
+    item.style.transform = 'translateY(0)';
+  });
+  const timeout = setTimeout(() => {
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(6px)';
+    item.addEventListener(
+      'transitionend',
+      () => {
+        try {
+          container.removeChild(item);
+          if (!container.childElementCount) container.parentNode?.removeChild(container);
+        } catch {}
+      },
+      { once: true }
+    );
+  }, duration);
+  return () => clearTimeout(timeout);
+}
+
 export default function UsersAdminPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,21 +94,15 @@ export default function UsersAdminPage() {
   async function load() {
     setLoading(true);
     try {
-      // โหลดผู้ใช้ที่ตรงกับคำค้น q ทั้งหมดก่อน แล้วค่อยไปนับ/กรอง role ฝั่ง client
-      const data = await listUsers({
-        q,
-        limit: 200,
-      });
+      const data = await listUsers({ q, limit: 200 });
       setRows(Array.isArray(data) ? data : []);
     } finally {
       setLoading(false);
     }
   }
 
-  // โหลดใหม่เมื่อ q เปลี่ยน (role จะกรองฝั่ง client)
   useEffect(() => { load(); }, [q]);
 
-  // นับจำนวนผู้ใช้แต่ละ role (นับจาก rows ที่ตรง q แล้ว)
   const roleCounts = useMemo(() => {
     const c = { all: (rows || []).length };
     for (const r of ROLES) c[r] = 0;
@@ -45,7 +112,6 @@ export default function UsersAdminPage() {
     return c;
   }, [rows]);
 
-  // แถวที่จะแสดงจริง ตาม role filter ปัจจุบัน
   const visibleRows = useMemo(() => {
     if (role === 'all') return rows;
     return (rows || []).filter(u => u.role === role);
@@ -136,14 +202,22 @@ export default function UsersAdminPage() {
       {showAdd && (
         <UserModal
           onClose={() => setShowAdd(false)}
-          onSaved={() => { setShowAdd(false); load(); }}
+          onSaved={() => {
+            setShowAdd(false);
+            ensureToast('User created successfully.');
+            load();
+          }}
         />
       )}
       {editRow && (
         <UserModal
           row={editRow}
           onClose={() => setEditRow(null)}
-          onSaved={() => { setEditRow(null); load(); }}
+          onSaved={() => {
+            setEditRow(null);
+            ensureToast('User updated successfully.');
+            load();
+          }}
         />
       )}
     </div>

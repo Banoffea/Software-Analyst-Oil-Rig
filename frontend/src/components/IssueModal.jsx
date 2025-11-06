@@ -2,7 +2,88 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createIssue } from "../api/issues";
-import { useAuth } from "../utils/auth.jsx"; // ⬅️ ใช้ role ของผู้ใช้
+import { useAuth } from "../utils/auth.jsx";
+
+// ==== Lightweight global toast (bottom-right, success style) ====
+function showGlobalToast(message, duration = 2500) {
+  // สร้าง/หา container
+  let container = document.getElementById("itoast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "itoast-container";
+    container.setAttribute("role", "status");
+    container.setAttribute("aria-live", "polite");
+    container.style.position = "fixed";
+    container.style.right = "16px";
+    container.style.bottom = "16px";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "8px";
+    container.style.zIndex = "2147483647";
+    document.body.appendChild(container);
+  }
+
+  // ตัว toast
+  const item = document.createElement("div");
+  item.className = "itoast-item";
+  item.style.display = "flex";
+  item.style.alignItems = "center";
+  item.style.gap = "10px";
+  item.style.background = "#16a34a";      // ✅ เขียว
+  item.style.color = "#FFFFFF";
+  item.style.border = "1px solid #16a34a";
+  item.style.borderRadius = "12px";
+  item.style.padding = "10px 12px";
+  item.style.boxShadow = "0 10px 30px rgba(0,0,0,.25)";
+  item.style.fontSize = "14px";
+  item.style.opacity = "0";
+  item.style.transform = "translateY(6px)";
+  item.style.transition = "opacity .18s ease, transform .18s ease";
+
+  // ไอคอนวงกลมติ๊กถูก (SVG)
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.95"></circle>
+      <path d="M6 10.2l2.2 2.2L14 6.9" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  item.appendChild(icon);
+  item.appendChild(text);
+  container.appendChild(item);
+
+  // enter
+  requestAnimationFrame(() => {
+    item.style.opacity = "1";
+    item.style.transform = "translateY(0)";
+  });
+
+  // leave + cleanup
+  const timeout = setTimeout(() => {
+    item.style.opacity = "0";
+    item.style.transform = "translateY(6px)";
+    item.addEventListener(
+      "transitionend",
+      () => {
+        try {
+          container.removeChild(item);
+          if (!container.childElementCount) {
+            container.parentNode?.removeChild(container);
+          }
+        } catch {}
+      },
+      { once: true }
+    );
+  }, duration);
+
+  return () => clearTimeout(timeout);
+}
+
 
 // "YYYY-MM-DDTHH:mm" for <input type="datetime-local">
 function nowLocalForInput() {
@@ -39,10 +120,10 @@ export default function IssueModal({
   defaultVesselPosId = null,
   defaultShipmentId = null,
   lockType = false,
-  defaultTitle = "", // จะถูก "เมิน" แล้ว (ไม่ auto-fill)
+  defaultTitle = "",
 }) {
   const { me } = useAuth();
-  const isAdmin = me?.role === "admin"; // ⬅️ กัน admin ไม่ให้รายงาน
+  const isAdmin = me?.role === "admin";
 
   const firstFieldRef = useRef(null);
   const descRef = useRef(null);
@@ -56,7 +137,7 @@ export default function IssueModal({
   const [shipmentId, setShipmentId] = useState(defaultShipmentId ?? "");
 
   const [severity, setSeverity] = useState("");
-  const [title, setTitle] = useState("");             // ⬅️ ไม่มี default title แล้ว
+  const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
   const [desc, setDesc] = useState("");
   const [triedSubmit, setTriedSubmit] = useState(false);
@@ -65,13 +146,13 @@ export default function IssueModal({
   const [anchorAt, setAnchorAt] = useState(nowLocalForInput());
   const [busy, setBusy] = useState(false);
 
-  // lock when opened from context
   const derivedLock =
     lockType ||
     (defaultType === "oil" && defaultRigId != null) ||
     (defaultType === "lot" && defaultLotId != null) ||
     (defaultType === "vessel" && defaultVesselId != null) ||
-    (defaultType === "shipment" && (defaultShipmentId != null || defaultVesselId != null));
+    (defaultType === "shipment" &&
+      (defaultShipmentId != null || defaultVesselId != null));
 
   // reset when opened
   useEffect(() => {
@@ -86,8 +167,8 @@ export default function IssueModal({
     setDesc("");
     setTriedSubmit(false);
     setAnchorAt(nowLocalForInput());
-    setTitle("");                 // ⬅️ reset เป็นค่าว่างเสมอ
-    setTitleTouched(false);       // ⬅️ ไม่ถือว่าผู้ใช้เคยแก้
+    setTitle("");
+    setTitleTouched(false);
 
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -104,7 +185,7 @@ export default function IssueModal({
     defaultVesselId,
     defaultVesselPosId,
     defaultShipmentId,
-    defaultTitle, // อยู่ใน deps ได้ แต่จะไม่ถูกใช้
+    defaultTitle,
   ]);
 
   useEffect(() => {
@@ -116,17 +197,26 @@ export default function IssueModal({
 
   if (!open) return null;
 
-  // ==== Admin view: แสดงหน้าว่าง + ข้อความ และปุ่มปิดเท่านั้น ====
+  // Admin cannot report
   if (isAdmin) {
     return createPortal(
-      <div className="imodal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(false); }}>
+      <div
+        className="imodal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose?.(false);
+        }}
+      >
         <div className="imodal imodal-blank" onMouseDown={(e) => e.stopPropagation()}>
           <div className="imodal-blank-content">
             <h3 className="imodal-blank-title">Reporting is disabled for admin</h3>
             <p className="imodal-blank-msg">
               Admin users cannot report issues. Please ask a permitted role to submit a report.
             </p>
-            <button className="btn primary" onClick={() => onClose?.(false)}>Close</button>
+            <button className="btn primary" onClick={() => onClose?.(false)}>
+              Close
+            </button>
           </div>
         </div>
         <style>{CSS}</style>
@@ -168,15 +258,17 @@ export default function IssueModal({
       if (lotId) payload.lot_id = Number(lotId);
     } else if (type === "vessel") {
       if (vesselId) payload.vessel_id = Number(vesselId);
-      if (vposId) payload.vessel_position_id = Number(vposId); // optional
+      if (vposId) payload.vessel_position_id = Number(vposId);
     } else if (type === "shipment") {
-      if (shipmentId) payload.shipment_id = Number(shipmentId); // optional
-      if (vesselId) payload.vessel_id = Number(vesselId); // optional
+      if (shipmentId) payload.shipment_id = Number(shipmentId);
+      if (vesselId) payload.vessel_id = Number(vesselId);
     }
 
     setBusy(true);
     try {
       await createIssue(payload);
+      // ✅ Toast มุมขวาล่าง แล้วปิด modal
+      showGlobalToast("บันทึกข้อมูลสำเร็จแล้ว");
       onClose?.(true);
     } catch (err) {
       alert(err?.response?.data?.message || "Create failed");
@@ -218,8 +310,15 @@ export default function IssueModal({
               </label>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
-                  <option value="" disabled hidden>-- Select severity --</option>
+                <select
+                  className="in"
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                  required
+                >
+                  <option value="" disabled hidden>
+                    -- Select severity --
+                  </option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -241,8 +340,15 @@ export default function IssueModal({
               </div>
               <label className="f">
                 <span>Severity</span>
-                <select className="in" value={severity} onChange={(e) => setSeverity(e.target.value)} required>
-                  <option value="" disabled hidden>-- Select severity --</option>
+                <select
+                  className="in"
+                  value={severity}
+                  onChange={(e) => setSeverity(e.target.value)}
+                  required
+                >
+                  <option value="" disabled hidden>
+                    -- Select severity --
+                  </option>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -262,7 +368,11 @@ export default function IssueModal({
                 value={anchorAt}
                 onChange={(e) => setAnchorAt(e.target.value)}
               />
-              <button type="button" className="btn ghost" onClick={() => setAnchorAt(nowLocalForInput())}>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => setAnchorAt(nowLocalForInput())}
+              >
                 Now
               </button>
             </div>
@@ -392,7 +502,10 @@ export default function IssueModal({
                 setTitleTouched(true);
               }}
               required
-              placeholder={"e.g. " + makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })}
+              placeholder={
+                "e.g. " +
+                makeAutoTitle(type, { shipmentId, vesselId, lotId, rigId })
+              }
             />
           </label>
 
@@ -413,7 +526,12 @@ export default function IssueModal({
           </label>
 
           <div className="foot">
-            <button type="button" className="btn" onClick={() => onClose?.(false)} disabled={busy}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onClose?.(false)}
+              disabled={busy}
+            >
               Cancel
             </button>
             <button className="btn primary" disabled={busy}>

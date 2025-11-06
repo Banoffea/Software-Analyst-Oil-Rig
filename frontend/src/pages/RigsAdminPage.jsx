@@ -6,6 +6,78 @@ import { useAuth } from '../utils/auth.jsx';
 
 const STATUSES = ['online','offline','maintenance'];
 
+/* ==== Lightweight global toast (bottom-right, success style) ==== */
+function showGlobalToast(message, duration = 2500) {
+  let container = document.getElementById("itoast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "itoast-container";
+    container.setAttribute("role", "status");
+    container.setAttribute("aria-live", "polite");
+    Object.assign(container.style, {
+      position: "fixed",
+      right: "16px",
+      bottom: "16px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+      zIndex: "2147483647",
+    });
+    document.body.appendChild(container);
+  }
+
+  const item = document.createElement("div");
+  Object.assign(item.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    background: "#16a34a", // green
+    color: "#FFFFFF",
+    border: "1px solid #16a34a",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    boxShadow: "0 10px 30px rgba(0,0,0,.25)",
+    fontSize: "14px",
+    opacity: "0",
+    transform: "translateY(6px)",
+    transition: "opacity .18s ease, transform .18s ease",
+  });
+
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.95"></circle>
+      <path d="M6 10.2l2.2 2.2L14 6.9" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  item.appendChild(icon);
+  item.appendChild(text);
+  container.appendChild(item);
+
+  requestAnimationFrame(() => {
+    item.style.opacity = "1";
+    item.style.transform = "translateY(0)";
+  });
+
+  const timeout = setTimeout(() => {
+    item.style.opacity = "0";
+    item.style.transform = "translateY(6px)";
+    item.addEventListener("transitionend", () => {
+      try {
+        container.removeChild(item);
+        if (!container.childElementCount) container.parentNode?.removeChild(container);
+      } catch {}
+    }, { once: true });
+  }, duration);
+
+  return () => clearTimeout(timeout);
+}
+
 export default function RigsAdminPage() {
   const { me } = useAuth();
   const isAdmin = me?.role === 'admin';
@@ -13,6 +85,7 @@ export default function RigsAdminPage() {
   const canChangeStatus = isProduction;
 
   const [rows, setRows] = useState([]);
+  const [allRigs, setAllRigs] = useState([]); // ✅ เก็บรายการทั้งหมดไว้ตรวจซ้ำ rig_code
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -23,7 +96,7 @@ export default function RigsAdminPage() {
   const [globalCounts, setGlobalCounts] = useState({ all: 0, online: 0, offline: 0, maintenance: 0 });
   const computeStatusCounts = (list=[]) => {
     const c = { all: list.length, online: 0, offline: 0, maintenance: 0 };
-    for (const r of list) if (r?.status && c.hasOwnProperty(r.status)) c[r.status]++;
+    for (const r of list) if (r?.status && Object.prototype.hasOwnProperty.call(c, r.status)) c[r.status]++;
     return c;
   };
 
@@ -32,10 +105,12 @@ export default function RigsAdminPage() {
     try {
       const [filtered, all] = await Promise.all([
         listRigs({ q: q || undefined, status: status==='all' ? undefined : status, limit: 500 }),
-        listRigs({ limit: 10000 }) // ใช้สำหรับนับจำนวนรวมบนปุ่ม
+        listRigs({ limit: 10000 }) // ใช้สำหรับนับจำนวนรวม + ตรวจซ้ำ
       ]);
       setRows(Array.isArray(filtered) ? filtered : []);
-      setGlobalCounts(computeStatusCounts(Array.isArray(all) ? all : []));
+      const allList = Array.isArray(all) ? all : [];
+      setAllRigs(allList);
+      setGlobalCounts(computeStatusCounts(allList));
     } finally { setLoading(false); }
   }
   useEffect(()=>{ load(); }, [q, status]);
@@ -49,7 +124,7 @@ export default function RigsAdminPage() {
     setRows(rs => rs.map(x => x.id===row.id ? { ...x, __saving:true } : x));
     try {
       await updateRig(row.id, { status: s });
-      await load(); // sync จาก server และอัปเดต globalCounts
+      await load(); // sync จาก server และอัปเดต globalCounts/allRigs
     } catch (e) {
       const msg = e?.response?.data?.message || 'Update status failed';
       alert(msg);
@@ -139,7 +214,8 @@ export default function RigsAdminPage() {
                           onClick={async ()=>{
                             if (!confirm(`Delete rig ${r.rig_code}?`)) return;
                             await deleteRig(r.id);
-                            load();
+                            await load();
+                            // showGlobalToast('Rig deleted.'); // ถ้าต้องการ toast ตอนลบ ค่อยเปิดใช้
                           }}
                         >Delete</button>
                       </div>
@@ -155,8 +231,13 @@ export default function RigsAdminPage() {
       {showModal &&
         <RigModal
           row={editRow}
+          existingRigs={allRigs}          // ✅ ส่งรายการทั้งหมดลงไปตรวจซ้ำ
           onClose={()=>setShowModal(false)}
-          onSaved={()=>{ setShowModal(false); load(); }}
+          onSaved={(mode)=>{
+            setShowModal(false);
+            load();
+            showGlobalToast(mode === 'create' ? 'Rig created successfully.' : 'Rig updated successfully.');
+          }}
         />
       }
 
@@ -268,7 +349,7 @@ function StatusCell({ value, saving, canEdit, onChange }) {
 }
 
 /* ---------- Modal ---------- */
-function RigModal({ row, onClose, onSaved }) {
+function RigModal({ row, existingRigs = [], onClose, onSaved }) {
   const [rig_code, setRigCode] = useState(row?.rig_code || '');
   const [name, setName] = useState(row?.name || '');
   const [location, setLocation] = useState(row?.location || '');
@@ -279,6 +360,23 @@ function RigModal({ row, onClose, onSaved }) {
   const [busy, setBusy] = useState(false);
 
   const formRef = useRef(null);
+  const codeRef = useRef(null);
+
+  // ✅ ตรวจซ้ำ (ไม่คิดซ้ำกับเรคคอร์ดตัวเองตอนแก้ไข)
+  const codeClash = useMemo(() => {
+    const c = String(rig_code || '').trim().toLowerCase();
+    if (!c) return false;
+    return (existingRigs || []).some(r =>
+      String(r.rig_code || '').trim().toLowerCase() === c && r.id !== (row?.id ?? -1)
+    );
+  }, [rig_code, existingRigs, row?.id]);
+
+  useEffect(() => {
+    // อัปเดต customValidity ของช่อง rig_code ให้สอดคล้องกับการชนซ้ำแบบสดๆ
+    if (!codeRef.current) return;
+    if (codeClash) codeRef.current.setCustomValidity('This rig code already exists.');
+    else codeRef.current.setCustomValidity('');
+  }, [codeClash]);
 
   const toNum = (v) => {
     const n = Number(String(v ?? '').trim());
@@ -288,16 +386,28 @@ function RigModal({ row, onClose, onSaved }) {
   async function submit(e){
     e.preventDefault();
 
-    // ถ้าไม่ผ่าน constraint (required/min/max/ฯลฯ) ให้โชว์ bubble แล้วหยุด
+    // กันเคสขึ้นต้น/ลงท้ายด้วยช่องว่างแบบไม่ตั้งใจ
+    const trimmedCode = String(rig_code).trim();
+
+    // รายงาน invalid ทันทีถ้ามี
     if (formRef.current && !formRef.current.checkValidity()) {
       formRef.current.reportValidity();
+      return;
+    }
+    // ตรวจซ้ำอีกชั้น ป้องกัน race (เช่น มีการสร้าง code ใหม่ระหว่างที่ modal เปิดอยู่)
+    const dupNow = (existingRigs || []).some(r =>
+      String(r.rig_code || '').trim().toLowerCase() === trimmedCode.toLowerCase() &&
+      r.id !== (row?.id ?? -1)
+    );
+    if (dupNow) {
+      alert('Rig code already exists. Please choose another.');
       return;
     }
 
     setBusy(true);
     try {
       const payload = {
-        rig_code: String(rig_code).trim(),
+        rig_code: trimmedCode,
         name: String(name).trim(),
         location: String(location).trim(), // required แล้ว
         lat: toNum(lat),
@@ -305,9 +415,13 @@ function RigModal({ row, onClose, onSaved }) {
         capacity: toNum(capacity),
         status
       };
-      if (row) await updateRig(row.id, payload);
-      else     await createRig(payload);
-      onSaved?.();
+      if (row) {
+        await updateRig(row.id, payload);
+        onSaved?.('update'); // แจ้งโหมดให้ parent ทำ toast
+      } else {
+        await createRig(payload);
+        onSaved?.('create'); // แจ้งโหมดให้ parent ทำ toast
+      }
     } catch (e) {
       alert(e?.response?.data?.message || 'Save failed');
     } finally { setBusy(false); }
@@ -317,7 +431,7 @@ function RigModal({ row, onClose, onSaved }) {
     if (['e', 'E', '+', '-', '.'].includes(e.key)) e.preventDefault();
   };
 
-  // ⛔️ กันการ paste ที่ไม่ใช่ตัวเลขล้วน
+  // กันการ paste ที่ไม่ใช่ตัวเลขล้วน
   const onPasteDigitsOnly = (e) => {
     const text = e.clipboardData?.getData('text') ?? '';
     if (/[^0-9]/.test(text)) e.preventDefault();
@@ -334,15 +448,20 @@ function RigModal({ row, onClose, onSaved }) {
             <label className="block">
               <div className="muted text-xs mb-1">Rig code</div>
               <input
+                ref={codeRef}
                 className="input w-full"
                 placeholder="e.g. RIG-A"
                 value={rig_code}
                 onChange={e=>setRigCode(e.target.value)}
                 required
-                disabled={!!row}
-                onInvalid={e => e.target.setCustomValidity("Please fill in all the information correctly.")}
-                onInput={e => e.target.setCustomValidity("")}
+                onInvalid={e => e.target.setCustomValidity(codeClash ? 'This rig code already exists.' : 'Please fill in all the information correctly.')}
+                onInput={e => e.target.setCustomValidity(codeClash ? 'This rig code already exists.' : '')}
               />
+              {codeClash && (
+                <div className="muted" style={{ color:'#f87171', fontSize:12, marginTop:6 }}>
+                  This rig code already exists. Please choose another.
+                </div>
+              )}
             </label>
 
             <label className="block">
@@ -428,7 +547,7 @@ function RigModal({ row, onClose, onSaved }) {
 
           <div className="flex justify-end gap-2 pt-1">
             <button type="button" className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn btn-primary" disabled={busy}>{row ? 'Save' : 'Add'}</button>
+            <button className="btn btn-primary" disabled={busy || codeClash}>{row ? 'Save' : 'Add'}</button>
           </div>
         </form>
       </div>

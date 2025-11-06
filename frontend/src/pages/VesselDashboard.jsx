@@ -14,6 +14,75 @@ function fmtDeg(n)      { return n == null ? '-' : `${Number(n).toFixed(0)}°`; 
 function fmtTime(ts) { if (!ts) return '-'; return String(ts).replace('T',' ').slice(0,19); }
 const dedupeById = (arr=[]) => Array.from(new Map(arr.map(x=>[+x.id,x])).values());
 
+/* ==== Lightweight global toast (bottom-right, success style) ==== */
+function ensureToast(message, duration = 2500) {
+  if (typeof window !== 'undefined' && window.showGlobalToast) {
+    window.showGlobalToast(message, duration);
+    return;
+  }
+  let container = document.getElementById('itoast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'itoast-container';
+    container.setAttribute('role', 'status');
+    container.setAttribute('aria-live', 'polite');
+    Object.assign(container.style, {
+      position: 'fixed',
+      right: '16px',
+      bottom: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: '2147483647',
+    });
+    document.body.appendChild(container);
+  }
+  const item = document.createElement('div');
+  Object.assign(item.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    background: '#16a34a',
+    color: '#FFFFFF',
+    border: '1px solid #16a34a',
+    borderRadius: '12px',
+    padding: '10px 12px',
+    boxShadow: '0 10px 30px rgba(0,0,0,.25)',
+    fontSize: '14px',
+    opacity: '0',
+    transform: 'translateY(6px)',
+    transition: 'opacity .18s ease, transform .18s ease',
+  });
+  const icon = document.createElement('span');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = `
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="10" fill="white" fill-opacity="0.95"></circle>
+      <path d="M6 10.2l2.2 2.2L14 6.9" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `;
+  const text = document.createElement('span');
+  text.textContent = message;
+  item.appendChild(icon);
+  item.appendChild(text);
+  container.appendChild(item);
+  requestAnimationFrame(() => {
+    item.style.opacity = '1';
+    item.style.transform = 'translateY(0)';
+  });
+  const timeout = setTimeout(() => {
+    item.style.opacity = '0';
+    item.style.transform = 'translateY(6px)';
+    item.addEventListener('transitionend', () => {
+      try {
+        container.removeChild(item);
+        if (!container.childElementCount) container.parentNode?.removeChild(container);
+      } catch {}
+    }, { once: true });
+  }, duration);
+  return () => clearTimeout(timeout);
+}
+
 // ---------- Small UI bits ----------
 const StatusPill = ({ status }) => {
   const map = {
@@ -61,7 +130,7 @@ function EditVesselModal({ open, vessel, onClose, onSaved }) {
         capacity: Number(cap),
         // ❌ ไม่ส่ง status
       });
-      onSaved?.();
+      onSaved?.();  // parent จะโชว์ toast ให้
       onClose?.();
     } catch (e) {
       console.error(e);
@@ -330,7 +399,7 @@ export default function VesselDashboard() {
                 <th style={{width:70}}>ID</th>
                 <th>Name</th>
                 <th>Vessel No</th>
-                <th style={{width:140}}>Capacity</th> {/* ➕ เพิ่มคอลัมน์ */}
+                <th style={{width:140}}>Capacity</th>
                 <th style={{width:120}}>Status</th>
                 <th style={{width:140}}>Speed</th>
                 <th style={{width:120}}>Course</th>
@@ -352,7 +421,7 @@ export default function VesselDashboard() {
                     <td>#{v.id}</td>
                     <td>{v.name || '-'}</td>
                     <td>{v.vessel_no || '-'}</td>
-                    <td>{v.capacity != null ? `${Number(v.capacity).toLocaleString()} bbl` : '-'}</td> {/* ➕ ค่า Capacity */}
+                    <td>{v.capacity != null ? `${Number(v.capacity).toLocaleString()} bbl` : '-'}</td>
                     <td><StatusPill status={v.status} /></td>
 
                     <td>
@@ -448,7 +517,10 @@ export default function VesselDashboard() {
         open={editOpen}
         vessel={editVessel}
         onClose={() => setEditOpen(false)}
-        onSaved={load}
+        onSaved={() => {            // 🔔 โชว์ toast เมื่อบันทึกสำเร็จ
+          ensureToast('Vessel updated successfully.');
+          load();
+        }}
       />
 
       {/* Issue Modal */}
