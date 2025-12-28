@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Vessel Simulator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; background:#f6f7fb; margin:0; }
+  .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,.03); }
+  .card-head { padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eef0f3; }
+  .card-body { padding:16px; }
+  h1 { margin:0; font-size:22px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items: center; }
+  .field { display:flex; flex-direction:column; gap:6px; min-width:220px; }
+  .field > span { font-size:12px; color:#6b7280; }
+  .input, .select { padding:10px 12px; border:1px solid #d1d5db; border-radius:10px; background:#fff; outline:none; }
+  .btn { padding:9px 14px; border-radius:999px; border:1px solid #d1d5db; background:#fff; cursor:pointer; }
+  .btn-primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .muted { color:#6b7280; }
+  .pill { padding:4px 10px; border-radius:999px; border:1px solid #e5e7eb; background:#f3f4f6; font-size:12px; }
+  table { width:100%; border-collapse: collapse; }
+  th, td { padding:10px 12px; border-top:1px solid #eef0f3; text-align:left; white-space:nowrap; }
+  .right { text-align:right; }
+  .hidden { display:none; }
+  .lots { display:flex; gap:8px; flex-wrap:wrap; }
+  .lot-chip { padding:6px 10px; border:1px solid #e5e7eb; border-radius:999px; background:#fff; cursor:pointer; }
+  .lot-chip.active { background:#eef2ff; border-color:#c7d2fe; }
+  .lot-chip.disabled { opacity:.5; cursor:not-allowed; }
+  .active-box { background:#f9fafb; border:1px dashed #e5e7eb; border-radius:12px; padding:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="card-head">
+      <h1>Vessel Simulator</h1>
+      <div class="row">
+        <span id="vStatus" class="pill">Status: -</span>
+        <button id="btnLogout" class="btn hidden">Logout</button>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <!-- LOGIN -->
+      <div id="loginPane">
+        <p class="muted">Captain login is required.</p>
+        <div class="row">
+          <label class="field" style="min-width:260px">
+            <span>Username</span>
+            <input id="lgUser" class="input" />
+          </label>
+          <label class="field" style="min-width:260px">
+            <span>Password</span>
+            <input id="lgPass" class="input" type="password" />
+          </label>
+        </div>
+        <div style="margin-top:12px">
+          <button id="btnLogin" class="btn btn-primary">Login</button>
+          <span id="lgMsg" class="muted" style="margin-left:10px"></span>
+        </div>
+      </div>
+
+      <!-- SIMULATOR UI -->
+      <div id="simPane" class="hidden">
+        <div class="row">
+          <label class="field" style="min-width:260px">
+            <span>Vessel</span>
+            <select id="vesselSel" class="select"></select>
+          </label>
+
+          <label class="field" style="min-width:260px">
+            <span>Origin rig</span>
+            <select id="originRigSel" class="select"></select>
+          </label>
+
+          <label class="field" style="min-width:300px">
+            <span>Destination</span>
+            <input id="destTxt" class="input" placeholder="e.g. Songkhla Port" />
+          </label>
+        </div>
+
+        <!-- Active voyage panel -->
+        <div id="activeBox" class="active-box hidden" style="margin-top:10px"></div>
+
+        <div class="field" style="margin-top:10px">
+          <span>Lots on selected rig (choose to ship)</span>
+          <div id="lotsBox" class="lots"></div>
+        </div>
+
+        <div style="margin-top:12px" class="row">
+          <button id="btnLoading" class="btn">Set status: Loading</button>
+          <button id="btnStart" class="btn btn-primary">Start voyage</button>
+          <button id="btnStop" class="btn hidden">Stop sending</button>
+          <button id="btnResume" class="btn hidden">Resume sending</button>
+          <button id="btnArrive" class="btn hidden">Arrive</button>
+          <span id="simMsg" class="muted"></span>
+        </div>
+
+        <hr style="border:none;border-top:1px solid #eef0f3;margin:16px 0" />
+
+        <div class="row">
+          <label class="field">
+            <span>Lat</span>
+            <input id="lat" class="input" type="number" step="0.000001" />
+          </label>
+          <label class="field">
+            <span>Lon</span>
+            <input id="lon" class="input" type="number" step="0.000001" />
+          </label>
+          <label class="field">
+            <span>Speed (kn)</span>
+            <input id="speed" class="input" type="number" step="0.01" />
+          </label>
+          <label class="field">
+            <span>Course (°)</span>
+            <input id="course" class="input" type="number" step="1" />
+          </label>
+        </div>
+
+        <div style="margin-top:16px">
+          <table>
+            <thead>
+              <tr><th>Time</th><th>Lat / Lon</th><th class="right">Speed</th><th class="right">Course</th></tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BASE = location.origin + '/api/sim';
+const AUTH = BASE + '/auth';
+
+let token = localStorage.getItem('sim_token') || null;
+let autoTimer = null;
+let rigList = [];
+let lots = [];
+let shipmentId = null;        // active shipment for selected vessel
+let activeVoyage = null;      // { shipment_id, origin_rig_id, destination, status, lot_ids, lots }
+let vesselStatus = '-';
+
+const el = (id) => document.getElementById(id);
+const show = (id, s) => el(id).classList.toggle('hidden', !s);
+const setStatusPill = (s) => { vesselStatus = s; el('vStatus').textContent = 'Status: ' + (s || '-'); };
+
+function headers() {
+  return token ? { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + token }
+               : { 'Content-Type':'application/json' };
+}
+
+// ----- AUTH -----
+async function login() {
+  el('lgMsg').textContent = 'Signing in...';
+  const r = await fetch(AUTH + '/login', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ username: el('lgUser').value.trim(), password: el('lgPass').value })
+  });
+  const data = await r.json();
+  if (!r.ok) { el('lgMsg').textContent = data.message || 'Login failed'; return; }
+  token = data.token;
+  localStorage.setItem('sim_token', token);
+  el('lgUser').value = ''; el('lgPass').value = '';
+  el('lgMsg').textContent = '';
+  await Promise.all([loadVessels(), loadRigs()]);
+  await checkActiveForSelectedVessel();
+  show('loginPane', false);
+  show('simPane', true);
+  el('btnLogout').classList.remove('hidden');
+}
+
+function logout() {
+  token = null;
+  localStorage.removeItem('sim_token');
+  show('loginPane', true);
+  show('simPane', false);
+  el('btnLogout').classList.add('hidden');
+  stopSending();
+  setStatusPill('-');
+  shipmentId = null;
+  activeVoyage = null;
+  renderActiveBox(null);
+}
+
+// ----- DATA LOAD -----
+async function loadVessels() {
+  const r = await fetch(BASE + '/vessels', { headers: headers() });
+  if (r.status === 401 || r.status === 403) throw new Error('unauthorized');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || 'Load vessels failed');
+
+  const s = el('vesselSel'); s.innerHTML = '';
+  data.forEach(v => {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = `#${v.id} — ${v.name || '-'} (${v.vessel_no || '-'})`;
+    s.appendChild(opt);
+  });
+  if (data[0]?.status) setStatusPill(data[0].status);
+}
+
+async function loadRigs() {
+  const r = await fetch(BASE + '/rigs', { headers: headers() });
+  if (r.status === 401 || r.status === 403) throw new Error('unauthorized');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || 'Load rigs failed');
+
+  rigList = data;
+  const s = el('originRigSel'); s.innerHTML = '';
+  data.forEach(rg => {
+    const opt = document.createElement('option');
+    opt.value = rg.id;
+    opt.textContent = `#${rg.id} — ${rg.name || rg.rig_code}`;
+    s.appendChild(opt);
+  });
+  if (data.length) {
+    applyRigPosition(data[0].id);
+    await loadLotsOnRig(data[0].id);
+  }
+}
+
+function applyRigPosition(rigId) {
+  const rg = rigList.find(r => String(r.id) === String(rigId));
+  if (!rg) return;
+  if (rg.lat != null && rg.lon != null) {
+    el('lat').value = Number(rg.lat).toFixed(6);
+    el('lon').value = Number(rg.lon).toFixed(6);
+  }
+}
+
+async function loadLotsOnRig(rigId) {
+  const r = await fetch(`${BASE}/lots?rig_id=${rigId}`, { headers: headers() });
+  const data = await r.json();
+  lots = Array.isArray(data) ? data : [];
+  const box = el('lotsBox'); box.innerHTML = '';
+  (lots || []).forEach(L => {
+    const div = document.createElement('div');
+    div.className = 'lot-chip';
+    div.dataset.id = L.id;
+    div.textContent = `Lot #${L.id} • ${L.lot_date} • ${Number(L.total_qty||0).toLocaleString()}`;
+    div.addEventListener('click', () => {
+      if (div.classList.contains('disabled')) return;
+      div.classList.toggle('active');
+    });
+    box.appendChild(div);
+  });
+  // ถ้ามี active: ห้ามเลือก lot และโชว์เป็น disabled
+  if (activeVoyage) {
+    [...box.children].forEach(c => c.classList.add('disabled'));
+  }
+}
+
+// ----- ACTIVE UI -----
+function renderActiveBox(info) {
+    const box = el('activeBox');
+
+    if (!info) {
+      box.innerHTML = '';
+      show('activeBox', false);
+      show('btnLoading', true);
+      show('btnStart', true);
+      show('btnArrive', false);
+      show('btnStop', false);
+      show('btnResume', false);
+      el('simMsg').textContent = '';
+      return;
+    }
+
+    const lotsTxt = (info.lots || [])
+      .map(L => `#${L.lot_id || L.id} (${L.lot_date || ''})`)
+      .join(', ') || '-';
+
+    box.innerHTML = `
+      <div><b>Active voyage</b> — <span class="pill">#${info.id || info.shipment_id}</span></div>
+      <div class="muted" style="margin-top:6px">
+        Origin rig: <b>#${info.origin_rig_id}</b> • Destination: <b>${info.destination}</b> • Status: <b>${info.status}</b>
+        <br/>Lots: ${lotsTxt}
+      </div>
+    `;
+    show('activeBox', true);
+    show('btnLoading', false);
+    show('btnStart', false);
+    show('btnArrive', true);
+    show('btnStop', !!autoTimer);
+    show('btnResume', !autoTimer);
+  }
+
+// ----- ACTIONS -----
+async function setLoading() {
+  if (activeVoyage) { el('simMsg').textContent = 'Cannot set loading while voyage is active.'; return; }
+  const vessel_id = Number(el('vesselSel').value);
+  await fetch(`${BASE}/vessels/${vessel_id}`, {
+    method:'PATCH', headers: headers(),
+    body: JSON.stringify({ status: 'loading' })
+  });
+  setStatusPill('loading');
+}
+
+async function startVoyage() {
+  if (activeVoyage) { el('simMsg').textContent = 'This vessel already has an active voyage.'; return; }
+
+  const vessel_id     = Number(el('vesselSel').value);
+  const origin_rig_id = Number(el('originRigSel').value);
+  const destination   = el('destTxt').value.trim();
+  const selectedLotIds = [...document.querySelectorAll('.lot-chip.active')].map(d => Number(d.dataset.id));
+
+  if (!destination) { alert('Please fill destination'); return; }
+  if (!selectedLotIds.length) { alert('Please choose at least one lot'); return; }
+
+  el('simMsg').textContent = 'Starting...';
+
+  const r = await fetch(`${BASE}/voyages/start`, {
+    method:'POST',
+    headers: headers(),
+    body: JSON.stringify({ vessel_id, origin_rig_id, destination, lot_ids: selectedLotIds })
+  });
+
+  let data = {};
+  try { data = await r.json(); } catch {}
+
+  if (r.status === 409) {
+    const act = data.active || data;
+    if (act && (act.shipment_id || act.id)) {
+      shipmentId = act.shipment_id || act.id || null;
+      activeVoyage = {
+        shipment_id: shipmentId,
+        id: shipmentId,
+        origin_rig_id: act.origin_rig_id ?? origin_rig_id,
+        destination:   act.destination   ?? destination,
+        status:        act.status        || 'departed',
+        lots:          act.lots          || selectedLotIds.map(id => ({ lot_id: id })),
+      };
+
+      setStatusPill(activeVoyage.status === 'departed' ? 'sailing' : activeVoyage.status);
+      renderActiveBox(activeVoyage);
+      el('simMsg').textContent = data.message || 'Voyage already active.';
+      await loadLotsOnRig(activeVoyage.origin_rig_id);
+    } else {
+      el('simMsg').textContent = data.message || 'Invalid lots';
+    }
+    return;
+  }
+
+  if (!r.ok) { el('simMsg').textContent = data.message || 'Start failed'; return; }
+
+  shipmentId = data.shipment_id || data.id || null;
+  activeVoyage = {
+    shipment_id: shipmentId,
+    id: shipmentId,
+    origin_rig_id,
+    destination,
+    status: 'departed',
+    lots: selectedLotIds.map(id => ({ lot_id:id })),
+  };
+
+  setStatusPill('sailing');
+  el('simMsg').textContent = 'Running';
+  renderActiveBox(activeVoyage);
+
+  await loadLotsOnRig(origin_rig_id);
+  startSending();
+}
+
+async function arriveVoyage() {
+  if (!shipmentId) { alert('No active shipment'); return; }
+  el('simMsg').textContent = 'Finishing...';
+  const r = await fetch(`${BASE}/voyages/${shipmentId}/arrive`, {
+    method:'POST', headers: headers()
+  });
+  const data = await r.json();
+  if (!r.ok) { el('simMsg').textContent = 'Error: ' + (data.message || 'arrive failed'); return; }
+
+  stopSending();
+  setStatusPill('idle');
+  el('simMsg').textContent = 'Arrived';
+  shipmentId = null;
+  activeVoyage = null;
+  renderActiveBox(null);
+
+  await loadLotsOnRig(Number(el('originRigSel').value));
+}
+
+function formatTime(t) {
+  if (!t) {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset()*60000)
+      .toISOString().replace('T',' ').slice(0,19);
+  }
+  if (typeof t === 'string') return (t.includes('T') ? t.replace('T',' ') : t).slice(0,19);
+  const d = new Date(t);
+  if (!isNaN(d)) {
+    return new Date(d.getTime() - d.getTimezoneOffset()*60000)
+      .toISOString().replace('T',' ').slice(0,19);
+  }
+  return String(t);
+}
+
+function appendLog(p) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${formatTime(p.recorded_at)}</td>
+    <td>${(+p.lat).toFixed(5)}, ${(+p.lon).toFixed(5)}</td>
+    <td class="right">${p.speed ?? '-'}</td>
+    <td class="right">${p.course ?? '-'}</td>
+  `;
+  el('logBody').prepend(tr);
+}
+
+async function tickOnce() {
+  if (!activeVoyage) { el('simMsg').textContent = 'No active voyage to send positions for.'; return; }
+  const vessel_id = Number(el('vesselSel').value);
+  const payload = {
+    vessel_id,
+    lat: Number(el('lat').value || 0),
+    lon: Number(el('lon').value || 0),
+    speed: el('speed').value ? Number(el('speed').value) : null,
+    course: el('course').value ? Number(el('course').value) : null
+  };
+  const r = await fetch(BASE + '/positions', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(payload)
+  });
+
+  let data = null;
+  try { data = await r.json(); } catch {}
+  if (r.ok && data) appendLog(data);
+  else el('simMsg').textContent = 'Error sending position';
+}
+
+function startSending() {
+  if (autoTimer || !activeVoyage) return;
+  if (!el('speed').value)  el('speed').value  = (8 + Math.random()*4).toFixed(2);
+  if (!el('course').value) el('course').value = (Math.random()*360 | 0);
+  autoTimer = setInterval(() => {
+    const lat = Number(el('lat').value || 0) + (Math.random()-0.5)*0.01;
+    const lon = Number(el('lon').value || 0) + (Math.random()-0.5)*0.01;
+    el('lat').value = lat.toFixed(6);
+    el('lon').value = lon.toFixed(6);
+    tickOnce();
+  }, 10000);
+  show('btnStop', true);
+  show('btnResume', false);
+}
+
+function stopSending() {
+  if (autoTimer) {
+    clearInterval(autoTimer); autoTimer = null;
+  }
+  show('btnStop', false);
+  if (activeVoyage) show('btnResume', true);
+}
+
+async function checkActiveForSelectedVessel() {
+  const vessel_id = Number(el('vesselSel').value);
+  if (!vessel_id) return;
+
+  const r = await fetch(`${BASE}/voyages/active?vessel_id=${vessel_id}`, { headers: headers() });
+  const data = await r.json();
+
+  if (data && data.id) data.shipment_id = data.id;
+  if (data && (data.shipment_id || data.id)) {
+    activeVoyage = data;
+    shipmentId = data.shipment_id || data.id;
+    setStatusPill(data.status === 'departed' ? 'sailing' : data.status);
+    if (data.origin_rig_id) {
+      el('originRigSel').value = String(data.origin_rig_id);
+      applyRigPosition(data.origin_rig_id);
+      await loadLotsOnRig(data.origin_rig_id);
+    }
+    if (data.destination) el('destTxt').value = data.destination;
+    renderActiveBox(data);
+    el('simMsg').textContent = 'Voyage active — resume to continue sending.';
+  } else {
+    activeVoyage = null;
+    shipmentId = null;
+    renderActiveBox(null);
+  }
+}
+
+// ----- EVENTS -----
+el('btnLogin').addEventListener('click', login);
+el('btnLogout').addEventListener('click', logout);
+el('btnLoading').addEventListener('click', setLoading);
+el('btnStart').addEventListener('click', startVoyage);
+el('btnArrive').addEventListener('click', arriveVoyage);
+el('btnStop').addEventListener('click', stopSending);
+el('btnResume').addEventListener('click', startSending);
+
+el('originRigSel').addEventListener('change', async (e) => {
+  const rigId = Number(e.target.value);
+  applyRigPosition(rigId);
+  await loadLotsOnRig(rigId);
+});
+
+el('vesselSel').addEventListener('change', async () => {
+  stopSending();
+  el('logBody').innerHTML = '';
+  el('simMsg').textContent = '';
+  await checkActiveForSelectedVessel();
+});
+
+// boot with stored token
+(async () => {
+  if (token) {
+    try {
+      await Promise.all([loadVessels(), loadRigs()]);
+      await checkActiveForSelectedVessel();
+      show('loginPane', false);
+      show('simPane', true);
+      el('btnLogout').classList.remove('hidden');
+    } catch {
+      // token ใช้ไม่ได้/หมดอายุ → เคลียร์และไปหน้า Login
+      logout();
+    }
+  }
+})();
+</script>
+</body>
+</html>

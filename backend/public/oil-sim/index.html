@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Oil Readings Simulator</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, 'Helvetica Neue', Arial; background:#f6f7fb; margin:0; }
+  .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,.03); }
+  .card-head { padding:14px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #eef0f3; }
+  .card-body { padding:16px; }
+  h1 { margin:0; font-size:22px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .field { display:flex; flex-direction:column; gap:6px; min-width:220px; }
+  .field > span { font-size:12px; color:#6b7280; }
+  .input, .select { padding:10px 12px; border:1px solid #d1d5db; border-radius:10px; background:#fff; outline:none; }
+  .btn { padding:9px 14px; border-radius:999px; border:1px solid #d1d5db; background:#fff; cursor:pointer; }
+  .btn-primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .muted { color:#6b7280; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:10px 12px; border-top:1px solid #eef0f3; white-space:nowrap; text-align:left; }
+  .right { text-align:right; }
+  .riglist { display:grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:8px; }
+  .chip { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid #e5e7eb; border-radius:999px; background:#fff; }
+  .chip.disabled { opacity:.5; cursor:not-allowed; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="card-head">
+      <h1>Oil Readings Simulator</h1>
+      <div class="row">
+        <button id="btnLogout" class="btn hidden">Logout</button>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <!-- LOGIN -->
+      <div id="loginPane">
+        <p class="muted">Production login is required.</p>
+        <div class="row">
+          <label class="field" style="min-width:260px">
+            <span>Username</span>
+            <input id="lgUser" class="input" />
+          </label>
+          <label class="field" style="min-width:260px">
+            <span>Password</span>
+            <input id="lgPass" class="input" type="password" />
+          </label>
+        </div>
+        <div style="margin-top:12px">
+          <button id="btnLogin" class="btn btn-primary">Login</button>
+          <span id="lgMsg" class="muted" style="margin-left:10px"></span>
+        </div>
+      </div>
+
+      <!-- SIM PAGE -->
+      <div id="simPane" class="hidden">
+        <div class="row">
+          <label class="field" style="min-width:160px">
+            <span>Interval (seconds)</span>
+            <input id="intervalSec" class="input" type="number" min="5" step="1" value="60" />
+          </label>
+          <div class="field" style="min-width:220px">
+            <span>&nbsp;</span>
+            <div class="row">
+              <button id="btnStartSel" class="btn btn-primary">Start (selected rigs)</button>
+              <!-- removed: Start (all rigs) -->
+              <button id="btnStop" class="btn">Stop</button>
+              <button id="btnOnce" class="btn">Send once</button>
+            </div>
+          </div>
+          <span id="simMsg" class="muted"></span>
+        </div>
+
+        <div class="field" style="margin-top:10px">
+          <span>Rigs</span>
+          <div><label class="chip"><input id="chkAll" type="checkbox" /> Select all</label></div>
+          <div id="rigBox" class="riglist"></div>
+        </div>
+
+        <div style="margin-top:16px">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Rig</th>
+                <th>Lot</th>
+                <th class="right">Qty</th>
+                <th class="right">Temp</th>
+                <th class="right">Press</th>
+                <th class="right">Hum</th>
+                <th class="right">CO₂</th>
+                <th class="right">H₂S</th>
+                <th class="right">Water</th>
+              </tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const AUTH = location.origin + '/api/oil-sim/auth';
+const BASE  = location.origin + '/api/oil-sim';
+
+let token = localStorage.getItem('oil_sim_token') || null;
+let timer = null;
+let rigs = [];
+
+const el   = id => document.getElementById(id);
+const show = (id, s) => el(id).classList.toggle('hidden', !s);
+
+function headers() {
+  return token ? { 'Content-Type':'application/json', 'Authorization': 'Bearer ' + token }
+               : { 'Content-Type':'application/json' };
+}
+
+async function login() {
+  el('lgMsg').textContent = 'Signing in...';
+  try {
+    const r = await fetch(AUTH + '/login', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: el('lgUser').value.trim(), password: el('lgPass').value })
+    });
+    const data = await r.json().catch(()=> ({}));
+    if (!r.ok) { el('lgMsg').textContent = data.message || 'Login failed'; return; }
+
+    token = data.token;
+    localStorage.setItem('oil_sim_token', token);
+    el('lgUser').value = ''; el('lgPass').value = '';
+    el('lgMsg').textContent = '';
+
+    await loadRigs(); // จะ throw ถ้า token ใช้ไม่ได้/role ไม่ได้
+    show('loginPane', false);
+    show('simPane', true);
+    el('btnLogout').classList.remove('hidden');
+  } catch (e) {
+    // เคลียร์สภาพและแสดงข้อความ
+    logout();
+    el('lgMsg').textContent = 'Login failed or not allowed';
+  }
+}
+
+function logout() {
+  token = null;
+  localStorage.removeItem('oil_sim_token');
+  stopSending();
+  show('loginPane', true);
+  show('simPane', false);
+  el('btnLogout').classList.add('hidden');
+}
+
+async function loadRigs() {
+  const r = await fetch(BASE + '/rigs', { headers: headers() });
+  // ถ้า token/role ไม่ผ่าน ให้ throw เพื่อให้บูท/ล็อกอินพาไปหน้า Login
+  if (r.status === 401 || r.status === 403) throw new Error('unauthorized');
+  const data = await r.json().catch(()=> ({}));
+  if (!r.ok) throw new Error(data.message || 'Load rigs failed');
+
+  rigs = Array.isArray(data) ? data : [];
+  const box = el('rigBox'); box.innerHTML = '';
+  rigs.forEach(rg => {
+    const id = 'rg_' + rg.id;
+    const div = document.createElement('label');
+    const isOnline = (rg.status || '').toLowerCase() === 'online';
+   div.className = 'chip' + (isOnline ? '' : ' disabled');
+   div.innerHTML = `
+     <input type="checkbox" id="${id}" data-id="${rg.id}" ${isOnline ? '' : 'disabled'} />
+     #${rg.id} — ${rg.name || rg.rig_code}
+     <span class="muted" style="margin-left:6px;font-size:12px;">${rg.status || '-'}</span>
+   `;
+    box.appendChild(div);
+  });
+}
+
+function selectedRigIds() {
+  return [...document.querySelectorAll('#rigBox input[type=checkbox]:checked')]
+    .map(x => Number(x.dataset.id));
+}
+
+function appendLog(row) {
+  const now = new Date();
+  const ts = new Date(now.getTime() - now.getTimezoneOffset()*60000)
+                .toISOString().replace('T',' ').slice(0,19);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${ts}</td>
+    <td>#${row.rig_id}</td>
+    <td>#${row.lot_id}</td>
+    <td class="right">${(+row.Quantity).toFixed(3)}</td>
+    <td class="right">${(+row.Temperature).toFixed(3)}</td>
+    <td class="right">${(+row.Pressure).toFixed(3)}</td>
+    <td class="right">${(+row.Humidity).toFixed(3)}</td>
+    <td class="right">${(+row.CO2).toFixed(3)}</td>
+    <td class="right">${(+row.H2S).toFixed(3)}</td>
+    <td class="right">${(+row.Water).toFixed(3)}</td>
+  `;
+  el('logBody').prepend(tr);
+}
+
+async function sendOnce(ids) {
+  if (!ids.length) { el('simMsg').textContent = 'Please select rigs.'; return; }
+  const r = await fetch(BASE + '/readings/bulk', {
+    method:'POST', headers: headers(),
+    body: JSON.stringify({ rig_ids: ids })
+  });
+  const data = await r.json().catch(()=> ({}));
+  if (!r.ok) { el('simMsg').textContent = data.message || 'Send failed'; return; }
+  (data.results || []).forEach(appendLog);
+  el('simMsg').textContent = `Inserted ${data.inserted} readings`;
+}
+
+function startSending(ids) {
+  stopSending();
+  if (!ids.length) { el('simMsg').textContent = 'Please select rigs.'; return; }
+  const sec = Math.max(5, Number(el('intervalSec').value) || 60);
+  timer = setInterval(() => sendOnce(ids), sec * 1000);
+  el('simMsg').textContent = `Auto sending every ${sec}s for rigs: ${ids.join(', ')}`;
+}
+
+function stopSending() {
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+el('btnLogin').addEventListener('click', login);
+el('btnLogout').addEventListener('click', logout);
+el('btnStartSel').addEventListener('click', () => startSending(selectedRigIds()));
+el('btnStop').addEventListener('click', stopSending);
+el('btnOnce').addEventListener('click', () => sendOnce(selectedRigIds()));
+
+el('chkAll').addEventListener('change', (e) => {
+  const checked = e.target.checked;
+ document
+   .querySelectorAll('#rigBox input[type=checkbox]:not(:disabled)')
+   .forEach(x => x.checked = checked);});
+// boot with stored token
+(async () => {
+  if (token) {
+    try {
+      await loadRigs();            // จะ throw ถ้าไม่ผ่าน → ไป catch
+      show('loginPane', false);
+      show('simPane', true);
+      el('btnLogout').classList.remove('hidden');
+    } catch {
+      // token ใช้ไม่ได้/role ไม่ผ่าน → แสดงหน้า Login
+      logout();
+    }
+  }
+})();
+</script>
+</body>
+</html>
